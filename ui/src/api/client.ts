@@ -1,17 +1,34 @@
 import axios from 'axios'
-import type { AlertsPayload, Cluster, MetricsPayload, User } from '../types'
+import type { AlertsPayload, Cluster, LoginResponse, MetricsPayload, User } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
 
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
     if (err.response?.status === 403) {
       window.location.href = '/'
     }
     return Promise.reject(err)
   }
 )
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  const { data } = await api.post<LoginResponse>('/auth/login', { username, password })
+  return data
+}
 
 export async function me(): Promise<User> {
   const { data } = await api.get<User>('/auth/me')

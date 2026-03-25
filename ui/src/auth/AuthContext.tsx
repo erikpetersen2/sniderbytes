@@ -11,6 +11,7 @@ interface AuthState {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
+  login: (username: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -27,12 +28,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false))
   }, [])
 
+  const login = useCallback(async (username: string, password: string) => {
+    const res = await api.login(username, password)
+    localStorage.setItem('token', res.token)
+    setUser(res.user)
+  }, [])
+
   const logout = useCallback(() => {
+    localStorage.removeItem('token')
+    // Redirect to Keycloak logout so SSO sessions are also cleared
     window.location.href = KEYCLOAK_LOGOUT_URL
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

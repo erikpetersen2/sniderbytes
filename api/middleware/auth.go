@@ -34,8 +34,6 @@ func initJWKS(jwksURL string) error {
 // mapGroups maps Keycloak group paths to a sniderbytes role and any customer
 // names the user should be auto-assigned to.
 //
-// Recognized groups:
-//
 //	Gamewarden/employee/grafana-admin    → admin
 //	Gamewarden/employee/grafana-viewer   → viewer
 //	Customer/<name>/logging-access       → viewer + auto-assign <name> clusters
@@ -62,7 +60,10 @@ func mapGroups(groups []string) (role string, customerNames []string) {
 	return role, customerNames
 }
 
-func Auth(db *pgxpool.Pool, jwksURL string) gin.HandlerFunc {
+// Auth validates the bearer token. It first attempts local HMAC validation
+// (issued by /api/auth/login). If that fails it falls back to Keycloak JWKS
+// validation for tokens injected by authservice.
+func Auth(db *pgxpool.Pool, jwtSecret, jwksURL string) gin.HandlerFunc {
 	if err := initJWKS(jwksURL); err != nil {
 		panic("failed to initialize Keycloak JWKS: " + err.Error())
 	}
@@ -75,17 +76,38 @@ func Auth(db *pgxpool.Pool, jwksURL string) gin.HandlerFunc {
 		}
 		tokenStr := strings.TrimPrefix(header, "Bearer ")
 
+		// --- local HMAC token (issued by /api/auth/login) ---
+		localToken, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return []byte(jwtSecret), nil
+		})
+		if err == nil && localToken.Valid {
+			claims, ok := localToken.Claims.(jwt.MapClaims)
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+				return
+			}
+			c.Set("userID", int(claims["user_id"].(float64)))
+			c.Set("role", claims["role"].(string))
+			c.Set("username", claims["username"].(string))
+			c.Next()
+			return
+		}
+
+		// --- Keycloak JWT (injected by authservice) ---
 		jwksMu.RLock()
 		kf := jwksInst
 		jwksMu.RUnlock()
 
-		token, err := jwt.Parse(tokenStr, kf.Keyfunc)
-		if err != nil || !token.Valid {
+		kcToken, err := jwt.Parse(tokenStr, kf.Keyfunc)
+		if err != nil || !kcToken.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
+		claims, ok := kcToken.Claims.(jwt.MapClaims)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
 			return
@@ -111,7 +133,7 @@ func Auth(db *pgxpool.Pool, jwksURL string) gin.HandlerFunc {
 			return
 		}
 
-		// JIT upsert — create user on first login, keep role in sync with Keycloak groups
+		// JIT upsert
 		var userID int
 		if err := db.QueryRow(context.Background(),
 			`INSERT INTO users (username, password_hash, role)
@@ -124,7 +146,6 @@ func Auth(db *pgxpool.Pool, jwksURL string) gin.HandlerFunc {
 			return
 		}
 
-		// Auto-assign cluster access for Customer/<name>/logging-access groups
 		for _, name := range customerNames {
 			_, _ = db.Exec(context.Background(), `
 				INSERT INTO user_cluster_access (user_id, cluster_id)

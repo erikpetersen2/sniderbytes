@@ -23,11 +23,15 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	authHandler := &handlers.AuthHandler{DB: pool, JWTSecret: cfg.JWTSecret}
 	clustersHandler := &handlers.ClustersHandler{DB: pool}
 	metricsHandler := &handlers.MetricsHandler{DB: pool, Clusters: clustersHandler}
 	usersHandler := &handlers.UsersHandler{DB: pool}
 
-	protected := r.Group("/api", middleware.Auth(pool, cfg.KeycloakJWKSURL))
+	api := r.Group("/api")
+	api.POST("/auth/login", authHandler.Login)
+
+	protected := api.Group("/", middleware.Auth(pool, cfg.JWTSecret, cfg.KeycloakJWKSURL))
 	protected.GET("/auth/me", handlers.Me)
 	protected.GET("/clusters", clustersHandler.List)
 	protected.GET("/clusters/:id/metrics", metricsHandler.GetMetrics)
@@ -38,6 +42,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 
 	return r
 }
+
 
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
