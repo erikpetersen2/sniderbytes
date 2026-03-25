@@ -99,10 +99,42 @@ var defaultPanels = []PanelConfig{
 	{"Error Rate", `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100`, "%"},
 }
 
+// FetchNamespaces returns the list of Kubernetes namespaces visible in Prometheus.
+func FetchNamespaces(cfg Config) ([]string, error) {
+	token, err := getBearerToken(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", cfg.URL+"/api/datasources/proxy/1/api/v1/label/namespace/values", nil)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Data []string `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
 // FetchMetrics calls Grafana/Prometheus for configured panels.
 // Falls back to mock data if Grafana is unreachable or unconfigured.
 // If panels is empty, the built-in defaults are used.
-func FetchMetrics(cfg Config, panels []PanelConfig) (*models.MetricsPayload, error) {
+// namespace is substituted for $namespace in expressions; "" means ".*" (all).
+func FetchMetrics(cfg Config, panels []PanelConfig, namespace string) (*models.MetricsPayload, error) {
 	if len(panels) == 0 {
 		panels = defaultPanels
 	}
@@ -134,17 +166,23 @@ func FetchMetrics(cfg Config, panels []PanelConfig) (*models.MetricsPayload, err
 		return mockMetrics(panels), nil
 	}
 
-	return fetchRealMetrics(cfg.URL, token, panels)
+	return fetchRealMetrics(cfg.URL, token, panels, namespace)
 }
 
-func fetchRealMetrics(grafanaURL, token string, panels []PanelConfig) (*models.MetricsPayload, error) {
+func fetchRealMetrics(grafanaURL, token string, panels []PanelConfig, namespace string) (*models.MetricsPayload, error) {
+	nsValue := namespace
+	if nsValue == "" {
+		nsValue = ".*"
+	}
+
 	payload := &models.MetricsPayload{
 		Metrics:   make([]models.MetricValue, 0, len(panels)),
 		FetchedAt: time.Now(),
 	}
 
 	for _, p := range panels {
-		val, err := queryPromQL(grafanaURL, token, p.Expr)
+		expr := strings.ReplaceAll(p.Expr, "$namespace", nsValue)
+		val, err := queryPromQL(grafanaURL, token, expr)
 		if err != nil {
 			return mockMetrics(panels), nil
 		}

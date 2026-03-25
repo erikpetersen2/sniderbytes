@@ -36,6 +36,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	protected.GET("/auth/me", handlers.Me)
 	protected.GET("/clusters", clustersHandler.List)
 	protected.GET("/clusters/:id/metrics", metricsHandler.GetMetrics)
+	protected.GET("/clusters/:id/namespaces", metricsHandler.GetNamespaces)
 	protected.GET("/clusters/:id/alerts", metricsHandler.GetAlerts)
 
 	adminGroup := protected.Group("/admin", middleware.AdminOnly())

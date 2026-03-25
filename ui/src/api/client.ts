@@ -40,8 +40,14 @@ export async function getClusters(): Promise<Cluster[]> {
   return data
 }
 
-export async function getMetrics(clusterId: number): Promise<MetricsPayload> {
-  const { data } = await api.get<MetricsPayload>(`/clusters/${clusterId}/metrics`)
+export async function getMetrics(clusterId: number, namespace?: string): Promise<MetricsPayload> {
+  const params = namespace ? { namespace } : {}
+  const { data } = await api.get<MetricsPayload>(`/clusters/${clusterId}/metrics`, { params })
+  return data
+}
+
+export async function getNamespaces(clusterId: number): Promise<string[]> {
+  const { data } = await api.get<string[]>(`/clusters/${clusterId}/namespaces`)
   return data
 }
 
