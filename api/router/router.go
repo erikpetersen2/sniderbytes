@@ -49,6 +49,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	adminGroup.POST("/organizations", handlers.CreateOrganization(pool))
 	adminGroup.GET("/environments/:id/panels", handlers.ListPanels(pool))
 	adminGroup.POST("/environments/:id/panels", handlers.CreatePanel(pool))
+	adminGroup.POST("/environments/:id/test-query", handlers.TestPanelQuery(pool))
 	adminGroup.PUT("/panels/:id", handlers.UpdatePanel(pool))
 	adminGroup.DELETE("/panels/:id", handlers.DeletePanel(pool))
 

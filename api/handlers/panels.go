@@ -3,9 +3,11 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sniderbytes/api/grafana"
 )
 
 type PanelView struct {
@@ -94,5 +96,54 @@ func DeletePanel(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		c.Status(http.StatusNoContent)
+	}
+}
+
+type testQueryRequest struct {
+	Expr      string `json:"expr" binding:"required"`
+	Namespace string `json:"namespace"`
+}
+
+// TestPanelQuery runs a PromQL expression against the first cluster in the
+// environment that has a Grafana URL configured, and returns the scalar result.
+func TestPanelQuery(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req testQueryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var grafanaURL, grafanaToken, grafanaAuthType, grafanaClientID, grafanaTokenURL string
+		err := db.QueryRow(context.Background(), `
+			SELECT grafana_url, grafana_token, grafana_auth_type, grafana_client_id, grafana_token_url
+			FROM clusters
+			WHERE environment_id = $1 AND grafana_url != ''
+			ORDER BY id LIMIT 1`,
+			c.Param("id"),
+		).Scan(&grafanaURL, &grafanaToken, &grafanaAuthType, &grafanaClientID, &grafanaTokenURL)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no configured cluster found for this environment"})
+			return
+		}
+
+		nsValue := req.Namespace
+		if nsValue == "" {
+			nsValue = ".*"
+		}
+		expr := strings.ReplaceAll(req.Expr, "$namespace", nsValue)
+
+		val, err := grafana.QueryPromQL(grafana.Config{
+			URL:      grafanaURL,
+			AuthType: grafanaAuthType,
+			Token:    grafanaToken,
+			ClientID: grafanaClientID,
+			TokenURL: grafanaTokenURL,
+		}, expr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"value": val})
 	}
 }

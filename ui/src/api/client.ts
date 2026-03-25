@@ -115,3 +115,8 @@ export async function updatePanel(id: number, panel: { name: string; expr: strin
 export async function deletePanel(id: number): Promise<void> {
   await api.delete(`/admin/panels/${id}`)
 }
+
+export async function testPanelQuery(environmentId: number, expr: string, namespace?: string): Promise<{ value: number }> {
+  const { data } = await api.post(`/admin/environments/${environmentId}/test-query`, { expr, namespace: namespace ?? '' })
+  return data
+}

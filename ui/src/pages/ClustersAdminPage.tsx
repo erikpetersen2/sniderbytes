@@ -10,6 +10,7 @@ import {
   createPanel,
   updatePanel,
   deletePanel,
+  testPanelQuery,
   type ClusterWriteRequest,
 } from '../api/client'
 import type { ClusterAdmin, EnvironmentOption, Panel } from '../types'
@@ -54,6 +55,8 @@ export default function ClustersAdminPage() {
   const [panelForm, setPanelForm] = useState({ name: '', expr: '', unit: '', position: 0 })
   const [panelSaving, setPanelSaving] = useState(false)
   const [panelFormError, setPanelFormError] = useState('')
+  const [queryRunning, setQueryRunning] = useState(false)
+  const [queryResult, setQueryResult] = useState<{ value?: number; error?: string } | null>(null)
 
   const loadData = () => {
     setLoading(true)
@@ -201,6 +204,22 @@ export default function ClustersAdminPage() {
     setShowPanelForm(false)
     setEditingPanelId(null)
     setPanelFormError('')
+    setQueryResult(null)
+  }
+
+  const handleRunQuery = async () => {
+    if (!activePanelEnvId || !panelForm.expr.trim()) return
+    setQueryRunning(true)
+    setQueryResult(null)
+    try {
+      const result = await testPanelQuery(activePanelEnvId, panelForm.expr)
+      setQueryResult({ value: result.value })
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Query failed'
+      setQueryResult({ error: msg })
+    } finally {
+      setQueryRunning(false)
+    }
   }
 
   const handlePanelSubmit = async (e: React.FormEvent) => {
@@ -561,12 +580,27 @@ export default function ClustersAdminPage() {
                                 <label className="block text-xs text-ops-muted mb-1">PromQL Expression *</label>
                                 <textarea
                                   required
-                                  rows={2}
+                                  rows={3}
                                   value={panelForm.expr}
-                                  onChange={(e) => setPanelForm((p) => ({ ...p, expr: e.target.value }))}
-                                  placeholder={`avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) * 100`}
-                                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-ops-accent resize-none"
+                                  onChange={(e) => { setPanelForm((p) => ({ ...p, expr: e.target.value })); setQueryResult(null) }}
+                                  placeholder={`avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`}
+                                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-ops-accent resize-y"
                                 />
+                                <div className="flex items-center gap-3 mt-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={handleRunQuery}
+                                    disabled={queryRunning || !panelForm.expr.trim()}
+                                    className="text-xs text-ops-accent border border-ops-accent px-2 py-0.5 rounded hover:bg-ops-accent/10 transition-colors disabled:opacity-40"
+                                  >
+                                    {queryRunning ? 'Running…' : '▶ Run Query'}
+                                  </button>
+                                  {queryResult && (
+                                    queryResult.error
+                                      ? <span className="text-xs text-ops-danger font-mono">{queryResult.error}</span>
+                                      : <span className="text-xs text-ops-success font-mono">→ {queryResult.value?.toFixed(4)}</span>
+                                  )}
+                                </div>
                               </div>
                               {panelFormError && <p className="text-ops-danger text-xs">{panelFormError}</p>}
                               <div className="flex gap-2">

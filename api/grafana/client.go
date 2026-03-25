@@ -92,11 +92,11 @@ type PanelConfig struct {
 }
 
 var defaultPanels = []PanelConfig{
-	{"CPU Usage", `avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) * 100`, "%"},
-	{"Memory Usage", `(1 - avg(node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`, "%"},
-	{"Pod Count", `count(kube_pod_info)`, ""},
-	{"Request Rate", `sum(rate(http_requests_total[5m]))`, "req/s"},
-	{"Error Rate", `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100`, "%"},
+	{"CPU Usage", `avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`, "%"},
+	{"Memory Usage", `(1 - avg(node_memory_MemAvailable_bytes{namespace=~"$namespace"} / node_memory_MemTotal_bytes{namespace=~"$namespace"})) * 100`, "%"},
+	{"Pod Count", `count(kube_pod_info{namespace=~"$namespace"})`, ""},
+	{"Request Rate", `sum(rate(http_requests_total{namespace=~"$namespace"}[5m]))`, "req/s"},
+	{"Error Rate", `sum(rate(http_requests_total{status=~"5..",namespace=~"$namespace"}[5m])) / sum(rate(http_requests_total{namespace=~"$namespace"}[5m])) * 100`, "%"},
 }
 
 // FetchNamespaces returns the list of Kubernetes namespaces visible in Prometheus.
@@ -193,6 +193,15 @@ func fetchRealMetrics(grafanaURL, token string, panels []PanelConfig, namespace 
 		})
 	}
 	return payload, nil
+}
+
+// QueryPromQL executes a single PromQL expression against the Grafana datasource proxy and returns the scalar result.
+func QueryPromQL(cfg Config, expr string) (float64, error) {
+	token, err := getBearerToken(cfg)
+	if err != nil {
+		return 0, err
+	}
+	return queryPromQL(cfg.URL, token, expr)
 }
 
 func queryPromQL(grafanaURL, token, expr string) (float64, error) {
