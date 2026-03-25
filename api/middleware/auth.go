@@ -50,15 +50,15 @@ func mapGroups(groups []string) (role string, customerNames []string) {
 	for _, g := range groups {
 		g = strings.TrimPrefix(g, "/")
 		switch g {
-		case "Gamewarden/employee/grafana-admin":
+		case "Gamewarden/employee/grafana-admins":
 			role = "admin"
-		case "Gamewarden/employee/grafana-viewer":
+		case "Gamewarden/employee/grafana-viewers":
 			if role != "admin" {
 				role = "viewer"
 			}
 		default:
 			parts := strings.SplitN(g, "/", 3)
-			if len(parts) == 3 && parts[0] == "Customer" && parts[2] == "logging-access" {
+			if len(parts) == 3 && parts[0] == "Customers" && parts[2] == "developers" {
 				customerNames = append(customerNames, parts[1])
 				if role != "admin" {
 					role = "viewer"
