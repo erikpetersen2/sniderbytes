@@ -3,7 +3,6 @@ import { AuthProvider } from './auth/AuthContext'
 import ProtectedRoute from './routes/ProtectedRoute'
 import AdminRoute from './routes/AdminRoute'
 import Layout from './components/Layout'
-import LoginPage from './pages/LoginPage'
 import OverviewPage from './pages/OverviewPage'
 import AlertsPage from './pages/AlertsPage'
 import UsersPage from './pages/UsersPage'
@@ -17,7 +16,6 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
             element={

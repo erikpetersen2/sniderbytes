@@ -1,56 +1,38 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import * as api from '../api/client'
 import type { User } from '../types'
 
+const KEYCLOAK_LOGOUT_URL =
+  'https://login.secondfront.com/auth/realms/gamewarden/protocol/openid-connect/logout' +
+  '?redirect_uri=' +
+  encodeURIComponent('https://sniderbytes.dev.secondfront.com')
+
 interface AuthState {
   user: User | null
-  token: string | null
   isAuthenticated: boolean
-  login: (username: string, password: string) => Promise<void>
+  isLoading: boolean
   logout: () => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
 
-function decodeJWT(token: string): User | null {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    return { id: payload.user_id, username: payload.username ?? '', role: payload.role }
-  } catch {
-    return null
-  }
-}
-
-function restoreUser(token: string | null): User | null {
-  if (!token) return null
-  // Decode claims; username not in JWT so we supplement from storage
-  const decoded = decodeJWT(token)
-  const storedUsername = localStorage.getItem('username')
-  if (decoded && storedUsername) decoded.username = storedUsername
-  return decoded
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
-  const [user, setUser] = useState<User | null>(() => restoreUser(localStorage.getItem('token')))
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await api.login(username, password)
-    localStorage.setItem('token', res.token)
-    localStorage.setItem('username', res.user.username)
-    setToken(res.token)
-    setUser(res.user)
+  useEffect(() => {
+    api.me()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('username')
-    setToken(null)
-    setUser(null)
+    window.location.href = KEYCLOAK_LOGOUT_URL
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, logout }}>
       {children}
     </AuthContext.Provider>
   )

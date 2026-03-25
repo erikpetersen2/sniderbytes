@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: api
+        protect: keycloak
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
