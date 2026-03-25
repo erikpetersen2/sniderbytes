@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net/url"
 	"math/rand"
 	"net/http"
 	"time"
@@ -79,7 +81,9 @@ func fetchRealMetrics(grafanaURL, token string) (*models.MetricsPayload, error) 
 }
 
 func queryPromQL(grafanaURL, token, expr string) (float64, error) {
-	url := fmt.Sprintf("%s/api/datasources/proxy/1/api/v1/query?query=%s", grafanaURL, expr)
+	params := url.Values{}
+	params.Set("query", expr)
+	url := fmt.Sprintf("%s/api/datasources/proxy/1/api/v1/query?%s", grafanaURL, params.Encode())
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return 0, err
@@ -112,6 +116,9 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 	}
 	var val float64
 	fmt.Sscanf(valStr, "%f", &val)
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		val = 0
+	}
 	return val, nil
 }
 
