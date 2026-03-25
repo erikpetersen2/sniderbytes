@@ -230,8 +230,11 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 			} `json:"result"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil || len(result.Data.Result) == 0 {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return 0, fmt.Errorf("unexpected response")
+	}
+	if len(result.Data.Result) == 0 {
+		return 0, nil
 	}
 
 	valStr, ok := result.Data.Result[0].Value[1].(string)
