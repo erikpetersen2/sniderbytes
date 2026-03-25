@@ -73,23 +73,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-ops-border">
-            <p className="text-xs text-ops-muted text-center">Demo credentials</p>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-xs font-mono">
-              <div className="bg-ops-bg rounded p-2">
-                <div className="text-ops-accent">admin</div>
-                <div className="text-ops-muted">admin / admin</div>
-              </div>
-              <div className="bg-ops-bg rounded p-2">
-                <div className="text-ops-accent">alice</div>
-                <div className="text-ops-muted">alice / alice123</div>
-              </div>
-              <div className="bg-ops-bg rounded p-2">
-                <div className="text-ops-accent">bob</div>
-                <div className="text-ops-muted">bob / bob123</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
