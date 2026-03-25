@@ -62,7 +62,7 @@ export default function App() {
             }
           />
           <Route
-            path="/admin/clusters"
+            path="/admin/organizations"
             element={
               <AdminRoute>
                 <Layout>

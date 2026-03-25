@@ -87,3 +87,7 @@ export async function getEnvironments(): Promise<EnvironmentOption[]> {
   const { data } = await api.get<EnvironmentOption[]>('/admin/environments')
   return data
 }
+
+export async function createOrganization(customerName: string, environmentName: string): Promise<void> {
+  await api.post('/admin/organizations', { customer_name: customerName, environment_name: environmentName })
+}

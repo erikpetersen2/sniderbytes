@@ -5,11 +5,12 @@ import {
   updateAdminCluster,
   deleteAdminCluster,
   getEnvironments,
+  createOrganization,
   type ClusterWriteRequest,
 } from '../api/client'
 import type { ClusterAdmin, EnvironmentOption } from '../types'
 
-const emptyForm: ClusterWriteRequest = {
+const emptyClusterForm: ClusterWriteRequest = {
   name: '',
   environment_id: 0,
   grafana_url: '',
@@ -19,16 +20,26 @@ const emptyForm: ClusterWriteRequest = {
   grafana_token_url: '',
 }
 
+const emptyOrgForm = { customerName: '', environmentName: '' }
+
 export default function ClustersAdminPage() {
   const [clusters, setClusters] = useState<ClusterAdmin[]>([])
   const [environments, setEnvironments] = useState<EnvironmentOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showForm, setShowForm] = useState(false)
+
+  // cluster form
+  const [showClusterForm, setShowClusterForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState<ClusterWriteRequest>(emptyForm)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState('')
+  const [clusterForm, setClusterForm] = useState<ClusterWriteRequest>(emptyClusterForm)
+  const [clusterSaving, setClusterSaving] = useState(false)
+  const [clusterFormError, setClusterFormError] = useState('')
+
+  // org form
+  const [showOrgForm, setShowOrgForm] = useState(false)
+  const [orgForm, setOrgForm] = useState(emptyOrgForm)
+  const [orgSaving, setOrgSaving] = useState(false)
+  const [orgFormError, setOrgFormError] = useState('')
 
   const loadData = () => {
     setLoading(true)
@@ -41,27 +52,26 @@ export default function ClustersAdminPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
-  // Group environments by customer for the select element
   const envByCustomer = environments.reduce<Record<string, EnvironmentOption[]>>((acc, e) => {
     if (!acc[e.customer]) acc[e.customer] = []
     acc[e.customer].push(e)
     return acc
   }, {})
 
+  // --- cluster form handlers ---
   const openCreate = () => {
     setEditingId(null)
-    setForm(emptyForm)
-    setFormError('')
-    setShowForm(true)
+    setClusterForm(emptyClusterForm)
+    setClusterFormError('')
+    setShowOrgForm(false)
+    setShowClusterForm(true)
   }
 
   const openEdit = (cluster: ClusterAdmin) => {
     setEditingId(cluster.id)
-    setForm({
+    setClusterForm({
       name: cluster.name,
       environment_id: cluster.environment_id,
       grafana_url: cluster.grafana_url,
@@ -70,33 +80,34 @@ export default function ClustersAdminPage() {
       grafana_client_id: cluster.grafana_client_id,
       grafana_token_url: cluster.grafana_token_url,
     })
-    setFormError('')
-    setShowForm(true)
+    setClusterFormError('')
+    setShowOrgForm(false)
+    setShowClusterForm(true)
   }
 
-  const closeForm = () => {
-    setShowForm(false)
+  const closeClusterForm = () => {
+    setShowClusterForm(false)
     setEditingId(null)
-    setForm(emptyForm)
-    setFormError('')
+    setClusterForm(emptyClusterForm)
+    setClusterFormError('')
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleClusterSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSaving(true)
-    setFormError('')
+    setClusterSaving(true)
+    setClusterFormError('')
     try {
       if (editingId !== null) {
-        await updateAdminCluster(editingId, form)
+        await updateAdminCluster(editingId, clusterForm)
       } else {
-        await createAdminCluster(form)
+        await createAdminCluster(clusterForm)
       }
-      closeForm()
+      closeClusterForm()
       loadData()
     } catch {
-      setFormError('Failed to save cluster. Please check your input and try again.')
+      setClusterFormError('Failed to save cluster. Please check your input and try again.')
     } finally {
-      setSaving(false)
+      setClusterSaving(false)
     }
   }
 
@@ -110,8 +121,37 @@ export default function ClustersAdminPage() {
     }
   }
 
-  const setField = <K extends keyof ClusterWriteRequest>(key: K, value: ClusterWriteRequest[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
+  const setClusterField = <K extends keyof ClusterWriteRequest>(key: K, value: ClusterWriteRequest[K]) => {
+    setClusterForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  // --- org form handlers ---
+  const openOrgForm = () => {
+    setOrgForm(emptyOrgForm)
+    setOrgFormError('')
+    setShowClusterForm(false)
+    setShowOrgForm(true)
+  }
+
+  const closeOrgForm = () => {
+    setShowOrgForm(false)
+    setOrgForm(emptyOrgForm)
+    setOrgFormError('')
+  }
+
+  const handleOrgSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setOrgSaving(true)
+    setOrgFormError('')
+    try {
+      await createOrganization(orgForm.customerName, orgForm.environmentName)
+      closeOrgForm()
+      loadData()
+    } catch {
+      setOrgFormError('Failed to create organization. Please try again.')
+    } finally {
+      setOrgSaving(false)
+    }
   }
 
   if (loading) {
@@ -127,32 +167,94 @@ export default function ClustersAdminPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-white">Cluster Management</h1>
-        <button
-          onClick={openCreate}
-          className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors"
-        >
-          Add Cluster
-        </button>
+        <h1 className="text-lg font-semibold text-white">Organization Management</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={openOrgForm}
+            className="text-xs border border-ops-accent text-ops-accent font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/10 transition-colors"
+          >
+            Add Organization
+          </button>
+          <button
+            onClick={openCreate}
+            className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors"
+          >
+            Add Cluster
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-ops-danger text-sm">{error}</p>}
 
-      {showForm && (
+      {/* Add Organization form */}
+      {showOrgForm && (
+        <div className="border border-ops-border rounded bg-ops-surface p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-white">New Organization</h2>
+          <p className="text-xs text-ops-muted">
+            Creates a new customer and its first environment. You can add clusters to it afterwards.
+          </p>
+          <form onSubmit={handleOrgSubmit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-ops-muted mb-1">Organization Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={orgForm.customerName}
+                  onChange={(e) => setOrgForm((p) => ({ ...p, customerName: e.target.value }))}
+                  placeholder="e.g. Acme Corp"
+                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ops-muted mb-1">First Environment Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={orgForm.environmentName}
+                  onChange={(e) => setOrgForm((p) => ({ ...p, environmentName: e.target.value }))}
+                  placeholder="e.g. Dev"
+                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                />
+              </div>
+            </div>
+            {orgFormError && <p className="text-ops-danger text-xs">{orgFormError}</p>}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={orgSaving}
+                className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
+              >
+                {orgSaving ? 'Creating...' : 'Create Organization'}
+              </button>
+              <button
+                type="button"
+                onClick={closeOrgForm}
+                className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1.5 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Add / Edit Cluster form */}
+      {showClusterForm && (
         <div className="border border-ops-border rounded bg-ops-surface p-4 space-y-4">
           <h2 className="text-sm font-semibold text-white">
             {editingId !== null ? 'Edit Cluster' : 'New Cluster'}
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleClusterSubmit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-ops-muted mb-1">Name *</label>
                 <input
                   type="text"
                   required
-                  value={form.name}
-                  onChange={(e) => setField('name', e.target.value)}
+                  value={clusterForm.name}
+                  onChange={(e) => setClusterField('name', e.target.value)}
                   className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                 />
               </div>
@@ -161,8 +263,8 @@ export default function ClustersAdminPage() {
                 <label className="block text-xs text-ops-muted mb-1">Environment *</label>
                 <select
                   required
-                  value={form.environment_id || ''}
-                  onChange={(e) => setField('environment_id', Number(e.target.value))}
+                  value={clusterForm.environment_id || ''}
+                  onChange={(e) => setClusterField('environment_id', Number(e.target.value))}
                   className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                 >
                   <option value="">Select environment...</option>
@@ -182,8 +284,8 @@ export default function ClustersAdminPage() {
                 <label className="block text-xs text-ops-muted mb-1">Grafana URL</label>
                 <input
                   type="text"
-                  value={form.grafana_url}
-                  onChange={(e) => setField('grafana_url', e.target.value)}
+                  value={clusterForm.grafana_url}
+                  onChange={(e) => setClusterField('grafana_url', e.target.value)}
                   placeholder="https://grafana.example.com"
                   className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                 />
@@ -193,8 +295,8 @@ export default function ClustersAdminPage() {
                 <label className="block text-xs text-ops-muted mb-1">Auth Type *</label>
                 <select
                   required
-                  value={form.grafana_auth_type}
-                  onChange={(e) => setField('grafana_auth_type', e.target.value as 'token' | 'keycloak')}
+                  value={clusterForm.grafana_auth_type}
+                  onChange={(e) => setClusterField('grafana_auth_type', e.target.value as 'token' | 'keycloak')}
                   className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                 >
                   <option value="token">Service Account Token</option>
@@ -203,7 +305,7 @@ export default function ClustersAdminPage() {
               </div>
             </div>
 
-            {form.grafana_auth_type === 'token' && (
+            {clusterForm.grafana_auth_type === 'token' && (
               <div>
                 <label className="block text-xs text-ops-muted mb-1">
                   Service Account Token{editingId !== null ? '' : ' *'}
@@ -211,23 +313,23 @@ export default function ClustersAdminPage() {
                 <input
                   type="password"
                   required={editingId === null}
-                  value={form.grafana_token}
-                  onChange={(e) => setField('grafana_token', e.target.value)}
+                  value={clusterForm.grafana_token}
+                  onChange={(e) => setClusterField('grafana_token', e.target.value)}
                   placeholder={editingId !== null ? 'Leave blank to keep existing' : 'glsa_...'}
                   className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                 />
               </div>
             )}
 
-            {form.grafana_auth_type === 'keycloak' && (
+            {clusterForm.grafana_auth_type === 'keycloak' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-ops-muted mb-1">Client ID *</label>
                   <input
                     type="text"
                     required
-                    value={form.grafana_client_id}
-                    onChange={(e) => setField('grafana_client_id', e.target.value)}
+                    value={clusterForm.grafana_client_id}
+                    onChange={(e) => setClusterField('grafana_client_id', e.target.value)}
                     className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                   />
                 </div>
@@ -239,8 +341,8 @@ export default function ClustersAdminPage() {
                   <input
                     type="password"
                     required={editingId === null}
-                    value={form.grafana_token}
-                    onChange={(e) => setField('grafana_token', e.target.value)}
+                    value={clusterForm.grafana_token}
+                    onChange={(e) => setClusterField('grafana_token', e.target.value)}
                     placeholder={editingId !== null ? 'Leave blank to keep existing' : ''}
                     className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                   />
@@ -251,8 +353,8 @@ export default function ClustersAdminPage() {
                   <input
                     type="text"
                     required
-                    value={form.grafana_token_url}
-                    onChange={(e) => setField('grafana_token_url', e.target.value)}
+                    value={clusterForm.grafana_token_url}
+                    onChange={(e) => setClusterField('grafana_token_url', e.target.value)}
                     placeholder="https://keycloak.example.com/auth/realms/myrealm/protocol/openid-connect/token"
                     className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
                   />
@@ -260,19 +362,19 @@ export default function ClustersAdminPage() {
               </div>
             )}
 
-            {formError && <p className="text-ops-danger text-xs">{formError}</p>}
+            {clusterFormError && <p className="text-ops-danger text-xs">{clusterFormError}</p>}
 
             <div className="flex gap-2 pt-1">
               <button
                 type="submit"
-                disabled={saving}
+                disabled={clusterSaving}
                 className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
               >
-                {saving ? 'Saving...' : editingId !== null ? 'Save Changes' : 'Create Cluster'}
+                {clusterSaving ? 'Saving...' : editingId !== null ? 'Save Changes' : 'Create Cluster'}
               </button>
               <button
                 type="button"
-                onClick={closeForm}
+                onClick={closeClusterForm}
                 className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1.5 transition-colors"
               >
                 Cancel

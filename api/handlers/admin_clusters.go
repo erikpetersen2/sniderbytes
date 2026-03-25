@@ -162,3 +162,49 @@ func ListEnvironments(db *pgxpool.Pool) gin.HandlerFunc {
 		c.JSON(http.StatusOK, result)
 	}
 }
+
+type createOrgRequest struct {
+	CustomerName    string `json:"customer_name" binding:"required"`
+	EnvironmentName string `json:"environment_name" binding:"required"`
+}
+
+func CreateOrganization(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req createOrgRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		tx, err := db.Begin(context.Background())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		defer tx.Rollback(context.Background())
+
+		var customerID int
+		if err := tx.QueryRow(context.Background(),
+			`INSERT INTO customers (name) VALUES ($1) RETURNING id`,
+			req.CustomerName,
+		).Scan(&customerID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		if _, err := tx.Exec(context.Background(),
+			`INSERT INTO environments (customer_id, name) VALUES ($1, $2)`,
+			customerID, req.EnvironmentName,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		if err := tx.Commit(context.Background()); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		c.Status(http.StatusCreated)
+	}
+}

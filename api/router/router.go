@@ -45,6 +45,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	adminGroup.PUT("/clusters/:id", adminClustersHandler.Update)
 	adminGroup.DELETE("/clusters/:id", adminClustersHandler.Delete)
 	adminGroup.GET("/environments", handlers.ListEnvironments(pool))
+	adminGroup.POST("/organizations", handlers.CreateOrganization(pool))
 
 	return r
 }
