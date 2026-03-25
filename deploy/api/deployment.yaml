@@ -13,9 +13,11 @@ spec:
       labels:
         app: api
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: api
-          image: ghcr.io/sniderbytes/api:latest
+          image: ghcr.io/erikpetersen2/api:latest
           ports:
             - containerPort: 8080
           env:

@@ -1,0 +1,27 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: sniderbytes
+  namespace: sniderbytes
+spec:
+  hosts:
+    - sniderbytes.dev.secondfront.com
+  gateways:
+    - istio-gateway/main-ingressgateway
+  http:
+    - match:
+        - uri:
+            prefix: /api
+      route:
+        - destination:
+            host: api
+            port:
+              number: 8080
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: ui
+            port:
+              number: 80
