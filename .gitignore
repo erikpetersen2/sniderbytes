@@ -1,0 +1,17 @@
+# Claude Code
+.claude/
+
+# Go
+api/sniderbytes-api
+api/*.exe
+
+# Node
+ui/node_modules/
+ui/dist/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store

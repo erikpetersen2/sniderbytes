@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply h-full bg-ops-bg text-gray-100 font-sans;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #30363d #0d1117;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    @apply bg-ops-bg;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    @apply bg-ops-border rounded;
+  }
+}

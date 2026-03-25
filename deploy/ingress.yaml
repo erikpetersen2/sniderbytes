@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sniderbytes
+  namespace: sniderbytes
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod  # uncomment to enable TLS
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: sniderbytes.example.com  # replace with your hostname
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui
+                port:
+                  number: 80
+  # tls:
+  #   - hosts:
+  #       - sniderbytes.example.com
+  #     secretName: sniderbytes-tls

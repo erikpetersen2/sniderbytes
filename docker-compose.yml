@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sniderbytes
+      POSTGRES_USER: sniderbytes
+      POSTGRES_PASSWORD: sniderbytes
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sniderbytes"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./api
+    environment:
+      DB_URL: postgres://sniderbytes:sniderbytes@postgres:5432/sniderbytes?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: "8080"
+      ENV: development
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    build: ./ui
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
