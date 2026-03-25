@@ -53,11 +53,91 @@ var migrations = []string{
 	)`,
 }
 
+// defaultPanelSeeds are the five built-in panels seeded into every environment.
+// Keep in sync with grafana.defaultPanels.
+var defaultPanelSeeds = []struct {
+	name, expr, unit string
+	position         int
+}{
+	{
+		name:     "CPU Usage",
+		expr:     `avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`,
+		unit:     "%",
+		position: 0,
+	},
+	{
+		name:     "Memory Usage",
+		expr:     `(1 - avg(node_memory_MemAvailable_bytes{namespace=~"$namespace"} / node_memory_MemTotal_bytes{namespace=~"$namespace"})) * 100`,
+		unit:     "%",
+		position: 1,
+	},
+	{
+		name:     "Pod Count",
+		expr:     `count(kube_pod_info{namespace=~"$namespace"})`,
+		unit:     "",
+		position: 2,
+	},
+	{
+		name:     "Request Rate",
+		expr:     `sum(rate(http_requests_total{namespace=~"$namespace"}[5m]))`,
+		unit:     "req/s",
+		position: 3,
+	},
+	{
+		name:     "Error Rate",
+		expr:     `sum(rate(http_requests_total{status=~"5..",namespace=~"$namespace"}[5m])) / sum(rate(http_requests_total{namespace=~"$namespace"}[5m])) * 100`,
+		unit:     "%",
+		position: 4,
+	},
+}
+
+// SeedDefaultPanels inserts any missing default panels into the given environment.
+// It is idempotent: panels that already exist (matched by name) are skipped.
+func SeedDefaultPanels(ctx context.Context, pool *pgxpool.Pool, envID int) error {
+	for _, p := range defaultPanelSeeds {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO panels (environment_id, name, expr, unit, position)
+			SELECT $1, $2, $3, $4, $5
+			WHERE NOT EXISTS (
+				SELECT 1 FROM panels WHERE environment_id = $1 AND name = $2
+			)`,
+			envID, p.name, p.expr, p.unit, p.position,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Migrate(pool *pgxpool.Pool) error {
+	ctx := context.Background()
+
 	for i, ddl := range migrations {
-		if _, err := pool.Exec(context.Background(), ddl); err != nil {
+		if _, err := pool.Exec(ctx, ddl); err != nil {
 			return fmt.Errorf("migration %d failed: %w", i, err)
 		}
 	}
+
+	// Seed default panels into every environment that is missing any of them.
+	rows, err := pool.Query(ctx, `SELECT id FROM environments`)
+	if err != nil {
+		return fmt.Errorf("seed panels: query environments: %w", err)
+	}
+	defer rows.Close()
+	var envIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			envIDs = append(envIDs, id)
+		}
+	}
+	rows.Close()
+
+	for _, envID := range envIDs {
+		if err := SeedDefaultPanels(ctx, pool, envID); err != nil {
+			return fmt.Errorf("seed panels for env %d: %w", envID, err)
+		}
+	}
+
 	return nil
 }

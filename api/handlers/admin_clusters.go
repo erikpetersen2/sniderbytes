@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	db_pkg "github.com/sniderbytes/api/db"
 )
 
 type AdminClustersHandler struct {
@@ -192,10 +193,11 @@ func CreateOrganization(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 
-		if _, err := tx.Exec(context.Background(),
-			`INSERT INTO environments (customer_id, name) VALUES ($1, $2)`,
+		var envID int
+		if err := tx.QueryRow(context.Background(),
+			`INSERT INTO environments (customer_id, name) VALUES ($1, $2) RETURNING id`,
 			customerID, req.EnvironmentName,
-		); err != nil {
+		).Scan(&envID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
@@ -204,6 +206,9 @@ func CreateOrganization(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
+
+		// Seed default panels for the new environment (best-effort)
+		_ = db_pkg.SeedDefaultPanels(context.Background(), db, envID)
 
 		c.Status(http.StatusCreated)
 	}
