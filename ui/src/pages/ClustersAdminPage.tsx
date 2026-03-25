@@ -32,6 +32,7 @@ export default function ClustersAdminPage() {
   const [environments, setEnvironments] = useState<EnvironmentOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedOrg, setSelectedOrg] = useState('')
 
   // cluster form
   const [showClusterForm, setShowClusterForm] = useState(false)
@@ -71,16 +72,28 @@ export default function ClustersAdminPage() {
 
   useEffect(() => { loadData() }, [])
 
-  const envByCustomer = environments.reduce<Record<string, EnvironmentOption[]>>((acc, e) => {
+  // Derived: org list, scoped envs and clusters
+  const orgs = [...new Set(environments.map((e) => e.customer))].sort()
+  const orgEnvs = environments.filter((e) => e.customer === selectedOrg)
+  const orgClusters = clusters.filter((c) => c.customer === selectedOrg)
+  const orgEnvsByName = orgEnvs.reduce<Record<string, EnvironmentOption[]>>((acc, e) => {
     if (!acc[e.customer]) acc[e.customer] = []
     acc[e.customer].push(e)
     return acc
   }, {})
 
+  // Reset panel state when org changes
+  const handleOrgChange = (org: string) => {
+    setSelectedOrg(org)
+    setActivePanelEnvId(null)
+    setShowClusterForm(false)
+    setShowPanelForm(false)
+  }
+
   // --- cluster form handlers ---
   const openCreate = () => {
     setEditingId(null)
-    setClusterForm(emptyClusterForm)
+    setClusterForm({ ...emptyClusterForm, environment_id: orgEnvs[0]?.id ?? 0 })
     setClusterFormError('')
     setShowOrgForm(false)
     setShowClusterForm(true)
@@ -260,33 +273,24 @@ export default function ClustersAdminPage() {
 
   return (
     <div className="p-6 space-y-6">
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-white">Organization Management</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={openOrgForm}
-            className="text-xs border border-ops-accent text-ops-accent font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/10 transition-colors"
-          >
-            Add Organization
-          </button>
-          <button
-            onClick={openCreate}
-            className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors"
-          >
-            Add Cluster
-          </button>
-        </div>
+        <button
+          onClick={openOrgForm}
+          className="text-xs border border-ops-accent text-ops-accent font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/10 transition-colors"
+        >
+          + New Organization
+        </button>
       </div>
 
       {error && <p className="text-ops-danger text-sm">{error}</p>}
 
-      {/* Add Organization form */}
+      {/* New Organization form */}
       {showOrgForm && (
         <div className="border border-ops-border rounded bg-ops-surface p-4 space-y-4">
           <h2 className="text-sm font-semibold text-white">New Organization</h2>
-          <p className="text-xs text-ops-muted">
-            Creates a new customer and its first environment. You can add clusters to it afterwards.
-          </p>
           <form onSubmit={handleOrgSubmit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -313,7 +317,7 @@ export default function ClustersAdminPage() {
               </div>
             </div>
             {orgFormError && <p className="text-ops-danger text-xs">{orgFormError}</p>}
-            <div className="flex gap-2 pt-1">
+            <div className="flex gap-2">
               <button
                 type="submit"
                 disabled={orgSaving}
@@ -321,11 +325,7 @@ export default function ClustersAdminPage() {
               >
                 {orgSaving ? 'Creating...' : 'Create Organization'}
               </button>
-              <button
-                type="button"
-                onClick={closeOrgForm}
-                className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1.5 transition-colors"
-              >
+              <button type="button" onClick={closeOrgForm} className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1.5 transition-colors">
                 Cancel
               </button>
             </div>
@@ -333,380 +333,365 @@ export default function ClustersAdminPage() {
         </div>
       )}
 
-      {/* Add / Edit Cluster form */}
-      {showClusterForm && (
-        <div className="border border-ops-border rounded bg-ops-surface p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-white">
-            {editingId !== null ? 'Edit Cluster' : 'New Cluster'}
-          </h2>
+      {/* Org selector */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-ops-muted whitespace-nowrap">View organization:</label>
+        <select
+          value={selectedOrg}
+          onChange={(e) => handleOrgChange(e.target.value)}
+          className="bg-ops-surface border border-ops-border rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-ops-accent min-w-48"
+        >
+          <option value="">— select an organization —</option>
+          {orgs.map((org) => (
+            <option key={org} value={org}>{org}</option>
+          ))}
+        </select>
+      </div>
 
-          <form onSubmit={handleClusterSubmit} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-ops-muted mb-1">Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={clusterForm.name}
-                  onChange={(e) => setClusterField('name', e.target.value)}
-                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                />
-              </div>
+      {/* Org-scoped content */}
+      {!selectedOrg ? (
+        <p className="text-xs text-ops-muted italic">Select an organization above to view and manage its clusters and panels.</p>
+      ) : (
+        <div className="space-y-6">
 
-              <div>
-                <label className="block text-xs text-ops-muted mb-1">Environment *</label>
-                <select
-                  required
-                  value={clusterForm.environment_id || ''}
-                  onChange={(e) => setClusterField('environment_id', Number(e.target.value))}
-                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                >
-                  <option value="">Select environment...</option>
-                  {Object.entries(envByCustomer).map(([customer, envs]) => (
-                    <optgroup key={customer} label={customer}>
-                      {envs.map((env) => (
-                        <option key={env.id} value={env.id}>
-                          {env.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
+          {/* Environments & Panels */}
+          <div>
+            <h2 className="text-sm font-semibold text-white mb-3">Environments &amp; Panels</h2>
+            <div className="space-y-2">
+              {orgEnvs.length === 0 ? (
+                <p className="text-xs text-ops-muted italic">No environments in this organization.</p>
+              ) : (
+                Object.values(orgEnvsByName).flat().map((env) => (
+                  <div key={env.id} className="border border-ops-border rounded overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 bg-ops-surface">
+                      <span className="text-xs text-white italic">{env.name}</span>
+                      <button
+                        onClick={() => openPanelManager(env.id)}
+                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                          activePanelEnvId === env.id
+                            ? 'text-ops-accent border border-ops-accent'
+                            : 'text-ops-muted hover:text-white border border-ops-border'
+                        }`}
+                      >
+                        {activePanelEnvId === env.id ? 'Close Panels' : 'Manage Panels'}
+                      </button>
+                    </div>
 
-              <div>
-                <label className="block text-xs text-ops-muted mb-1">Grafana URL</label>
-                <input
-                  type="text"
-                  value={clusterForm.grafana_url}
-                  onChange={(e) => setClusterField('grafana_url', e.target.value)}
-                  placeholder="https://grafana.example.com"
-                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                />
-              </div>
+                    {activePanelEnvId === env.id && (
+                      <div className="bg-ops-bg px-4 py-3 space-y-3">
+                        {panelsLoading ? (
+                          <div className="space-y-2">
+                            {[1, 2].map((i) => <div key={i} className="h-6 bg-ops-border rounded animate-pulse" />)}
+                          </div>
+                        ) : (
+                          <>
+                            {panels.length === 0 ? (
+                              <p className="text-xs text-ops-muted italic">
+                                No panels configured — using built-in defaults (CPU, Memory, Pod Count, Request Rate, Error Rate).
+                              </p>
+                            ) : (
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-ops-muted">
+                                    <th className="text-left py-1 pr-3 font-semibold">Name</th>
+                                    <th className="text-left py-1 pr-3 font-semibold">Expression</th>
+                                    <th className="text-left py-1 pr-3 font-semibold">Unit</th>
+                                    <th className="text-left py-1 pr-3 font-semibold">Pos</th>
+                                    <th />
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-ops-border">
+                                  {panels.map((p) => (
+                                    <tr key={p.id}>
+                                      <td className="py-1.5 pr-3 text-white">{p.name}</td>
+                                      <td className="py-1.5 pr-3 font-mono text-ops-muted max-w-xs truncate" title={p.expr}>{p.expr}</td>
+                                      <td className="py-1.5 pr-3 text-ops-muted">{p.unit || '—'}</td>
+                                      <td className="py-1.5 pr-3 text-ops-muted">{p.position}</td>
+                                      <td className="py-1.5 text-right space-x-2 whitespace-nowrap">
+                                        <button onClick={() => openEditPanel(p)} className="text-ops-muted hover:text-white transition-colors">Edit</button>
+                                        <button onClick={() => handleDeletePanel(p.id)} className="text-ops-danger hover:text-red-400 transition-colors">Delete</button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
 
-              <div>
-                <label className="block text-xs text-ops-muted mb-1">Auth Type *</label>
-                <select
-                  required
-                  value={clusterForm.grafana_auth_type}
-                  onChange={(e) => setClusterField('grafana_auth_type', e.target.value as 'token' | 'keycloak')}
-                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                >
-                  <option value="token">Service Account Token</option>
-                  <option value="keycloak">Keycloak Client Credentials</option>
-                </select>
-              </div>
+                            {showPanelForm ? (
+                              <form onSubmit={handlePanelSubmit} className="border border-ops-border rounded p-3 space-y-2 bg-ops-surface">
+                                <div className="text-xs font-semibold text-white">{editingPanelId !== null ? 'Edit Panel' : 'New Panel'}</div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="block text-xs text-ops-muted mb-1">Name *</label>
+                                    <input
+                                      type="text"
+                                      required
+                                      value={panelForm.name}
+                                      onChange={(e) => setPanelForm((p) => ({ ...p, name: e.target.value }))}
+                                      placeholder="CPU Usage"
+                                      className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-ops-muted mb-1">Unit</label>
+                                    <input
+                                      type="text"
+                                      value={panelForm.unit}
+                                      onChange={(e) => setPanelForm((p) => ({ ...p, unit: e.target.value }))}
+                                      placeholder="%"
+                                      className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-ops-muted mb-1">Position</label>
+                                    <input
+                                      type="number"
+                                      value={panelForm.position}
+                                      onChange={(e) => setPanelForm((p) => ({ ...p, position: Number(e.target.value) }))}
+                                      className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-ops-muted mb-1">PromQL Expression *</label>
+                                  <textarea
+                                    required
+                                    rows={3}
+                                    value={panelForm.expr}
+                                    onChange={(e) => { setPanelForm((p) => ({ ...p, expr: e.target.value })); setQueryResult(null) }}
+                                    placeholder={`avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`}
+                                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-ops-accent resize-y"
+                                  />
+                                  <div className="flex items-center gap-3 mt-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={handleRunQuery}
+                                      disabled={queryRunning || !panelForm.expr.trim()}
+                                      className="text-xs text-ops-accent border border-ops-accent px-2 py-0.5 rounded hover:bg-ops-accent/10 transition-colors disabled:opacity-40"
+                                    >
+                                      {queryRunning ? 'Running…' : '▶ Run Query'}
+                                    </button>
+                                    {queryResult && (
+                                      queryResult.error
+                                        ? <span className="text-xs text-ops-danger font-mono">{queryResult.error}</span>
+                                        : <span className="text-xs text-ops-success font-mono">→ {queryResult.value?.toFixed(4)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {panelFormError && <p className="text-ops-danger text-xs">{panelFormError}</p>}
+                                <div className="flex gap-2">
+                                  <button
+                                    type="submit"
+                                    disabled={panelSaving}
+                                    className="text-xs bg-ops-accent text-black font-semibold px-3 py-1 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
+                                  >
+                                    {panelSaving ? 'Saving...' : editingPanelId !== null ? 'Save' : 'Add Panel'}
+                                  </button>
+                                  <button type="button" onClick={closePanelForm} className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1 transition-colors">Cancel</button>
+                                </div>
+                              </form>
+                            ) : (
+                              <button onClick={openAddPanel} className="text-xs text-ops-accent hover:text-ops-accent/80 transition-colors">
+                                + Add Panel
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Clusters */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-white">Clusters</h2>
+              <button
+                onClick={openCreate}
+                className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors"
+              >
+                + Add Cluster
+              </button>
             </div>
 
-            {clusterForm.grafana_auth_type === 'token' && (
-              <div>
-                <label className="block text-xs text-ops-muted mb-1">
-                  Service Account Token{editingId !== null ? '' : ' *'}
-                </label>
-                <input
-                  type="password"
-                  required={editingId === null}
-                  value={clusterForm.grafana_token}
-                  onChange={(e) => setClusterField('grafana_token', e.target.value)}
-                  placeholder={editingId !== null ? 'Leave blank to keep existing' : 'glsa_...'}
-                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                />
-              </div>
-            )}
-
-            {clusterForm.grafana_auth_type === 'keycloak' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-ops-muted mb-1">Client ID *</label>
-                  <input
-                    type="text"
-                    required
-                    value={clusterForm.grafana_client_id}
-                    onChange={(e) => setClusterField('grafana_client_id', e.target.value)}
-                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-ops-muted mb-1">
-                    Client Secret{editingId !== null ? '' : ' *'}
-                  </label>
-                  <input
-                    type="password"
-                    required={editingId === null}
-                    value={clusterForm.grafana_token}
-                    onChange={(e) => setClusterField('grafana_token', e.target.value)}
-                    placeholder={editingId !== null ? 'Leave blank to keep existing' : ''}
-                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-xs text-ops-muted mb-1">Token URL *</label>
-                  <input
-                    type="text"
-                    required
-                    value={clusterForm.grafana_token_url}
-                    onChange={(e) => setClusterField('grafana_token_url', e.target.value)}
-                    placeholder="https://keycloak.example.com/auth/realms/myrealm/protocol/openid-connect/token"
-                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
-                  />
-                </div>
-              </div>
-            )}
-
-            {clusterFormError && <p className="text-ops-danger text-xs">{clusterFormError}</p>}
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={clusterSaving}
-                className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
-              >
-                {clusterSaving ? 'Saving...' : editingId !== null ? 'Save Changes' : 'Create Cluster'}
-              </button>
-              <button
-                type="button"
-                onClick={closeClusterForm}
-                className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1.5 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Environments & Panels */}
-      <div>
-        <h2 className="text-sm font-semibold text-white mb-3">Environments &amp; Panels</h2>
-        <div className="space-y-2">
-          {Object.entries(envByCustomer).map(([customer, envs]) => (
-            <div key={customer}>
-              <div className="text-xs font-semibold text-ops-muted uppercase tracking-wider mb-1">{customer}</div>
-              {envs.map((env) => (
-                <div key={env.id} className="border border-ops-border rounded overflow-hidden mb-2">
-                  <div className="flex items-center justify-between px-4 py-2 bg-ops-surface">
-                    <span className="text-xs text-white italic">{env.name}</span>
-                    <button
-                      onClick={() => openPanelManager(env.id)}
-                      className={`text-xs px-2 py-1 rounded transition-colors ${
-                        activePanelEnvId === env.id
-                          ? 'text-ops-accent border border-ops-accent'
-                          : 'text-ops-muted hover:text-white border border-ops-border'
-                      }`}
-                    >
-                      {activePanelEnvId === env.id ? 'Close Panels' : 'Manage Panels'}
-                    </button>
+            {showClusterForm && (
+              <div className="border border-ops-border rounded bg-ops-surface p-4 space-y-4 mb-4">
+                <h3 className="text-sm font-semibold text-white">
+                  {editingId !== null ? 'Edit Cluster' : 'New Cluster'}
+                </h3>
+                <form onSubmit={handleClusterSubmit} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-ops-muted mb-1">Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={clusterForm.name}
+                        onChange={(e) => setClusterField('name', e.target.value)}
+                        className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-ops-muted mb-1">Environment *</label>
+                      <select
+                        required
+                        value={clusterForm.environment_id || ''}
+                        onChange={(e) => setClusterField('environment_id', Number(e.target.value))}
+                        className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                      >
+                        <option value="">Select environment...</option>
+                        {orgEnvs.map((env) => (
+                          <option key={env.id} value={env.id}>{env.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-ops-muted mb-1">Grafana URL</label>
+                      <input
+                        type="text"
+                        value={clusterForm.grafana_url}
+                        onChange={(e) => setClusterField('grafana_url', e.target.value)}
+                        placeholder="https://grafana.example.com"
+                        className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-ops-muted mb-1">Auth Type *</label>
+                      <select
+                        required
+                        value={clusterForm.grafana_auth_type}
+                        onChange={(e) => setClusterField('grafana_auth_type', e.target.value as 'token' | 'keycloak')}
+                        className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                      >
+                        <option value="token">Service Account Token</option>
+                        <option value="keycloak">Keycloak Client Credentials</option>
+                      </select>
+                    </div>
                   </div>
 
-                  {activePanelEnvId === env.id && (
-                    <div className="bg-ops-bg px-4 py-3 space-y-3">
-                      {panelsLoading ? (
-                        <div className="space-y-2">
-                          {[1, 2].map((i) => <div key={i} className="h-6 bg-ops-border rounded animate-pulse" />)}
-                        </div>
-                      ) : (
-                        <>
-                          {panels.length === 0 ? (
-                            <p className="text-xs text-ops-muted italic">
-                              No panels configured — using built-in defaults (CPU, Memory, Pod Count, Request Rate, Error Rate).
-                            </p>
-                          ) : (
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-ops-muted">
-                                  <th className="text-left py-1 pr-3 font-semibold">Name</th>
-                                  <th className="text-left py-1 pr-3 font-semibold">Expression</th>
-                                  <th className="text-left py-1 pr-3 font-semibold">Unit</th>
-                                  <th className="text-left py-1 pr-3 font-semibold">Pos</th>
-                                  <th />
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-ops-border">
-                                {panels.map((p) => (
-                                  <tr key={p.id}>
-                                    <td className="py-1.5 pr-3 text-white">{p.name}</td>
-                                    <td className="py-1.5 pr-3 font-mono text-ops-muted max-w-xs truncate" title={p.expr}>{p.expr}</td>
-                                    <td className="py-1.5 pr-3 text-ops-muted">{p.unit || '—'}</td>
-                                    <td className="py-1.5 pr-3 text-ops-muted">{p.position}</td>
-                                    <td className="py-1.5 text-right space-x-2 whitespace-nowrap">
-                                      <button onClick={() => openEditPanel(p)} className="text-ops-muted hover:text-white transition-colors">Edit</button>
-                                      <button onClick={() => handleDeletePanel(p.id)} className="text-ops-danger hover:text-red-400 transition-colors">Delete</button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-
-                          {showPanelForm ? (
-                            <form onSubmit={handlePanelSubmit} className="border border-ops-border rounded p-3 space-y-2 bg-ops-surface">
-                              <div className="text-xs font-semibold text-white">{editingPanelId !== null ? 'Edit Panel' : 'New Panel'}</div>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                  <label className="block text-xs text-ops-muted mb-1">Name *</label>
-                                  <input
-                                    type="text"
-                                    required
-                                    value={panelForm.name}
-                                    onChange={(e) => setPanelForm((p) => ({ ...p, name: e.target.value }))}
-                                    placeholder="CPU Usage"
-                                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs text-ops-muted mb-1">Unit</label>
-                                  <input
-                                    type="text"
-                                    value={panelForm.unit}
-                                    onChange={(e) => setPanelForm((p) => ({ ...p, unit: e.target.value }))}
-                                    placeholder="%"
-                                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs text-ops-muted mb-1">Position</label>
-                                  <input
-                                    type="number"
-                                    value={panelForm.position}
-                                    onChange={(e) => setPanelForm((p) => ({ ...p, position: Number(e.target.value) }))}
-                                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-xs text-ops-muted mb-1">PromQL Expression *</label>
-                                <textarea
-                                  required
-                                  rows={3}
-                                  value={panelForm.expr}
-                                  onChange={(e) => { setPanelForm((p) => ({ ...p, expr: e.target.value })); setQueryResult(null) }}
-                                  placeholder={`avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`}
-                                  className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-ops-accent resize-y"
-                                />
-                                <div className="flex items-center gap-3 mt-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={handleRunQuery}
-                                    disabled={queryRunning || !panelForm.expr.trim()}
-                                    className="text-xs text-ops-accent border border-ops-accent px-2 py-0.5 rounded hover:bg-ops-accent/10 transition-colors disabled:opacity-40"
-                                  >
-                                    {queryRunning ? 'Running…' : '▶ Run Query'}
-                                  </button>
-                                  {queryResult && (
-                                    queryResult.error
-                                      ? <span className="text-xs text-ops-danger font-mono">{queryResult.error}</span>
-                                      : <span className="text-xs text-ops-success font-mono">→ {queryResult.value?.toFixed(4)}</span>
-                                  )}
-                                </div>
-                              </div>
-                              {panelFormError && <p className="text-ops-danger text-xs">{panelFormError}</p>}
-                              <div className="flex gap-2">
-                                <button
-                                  type="submit"
-                                  disabled={panelSaving}
-                                  className="text-xs bg-ops-accent text-black font-semibold px-3 py-1 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
-                                >
-                                  {panelSaving ? 'Saving...' : editingPanelId !== null ? 'Save' : 'Add Panel'}
-                                </button>
-                                <button type="button" onClick={closePanelForm} className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1 transition-colors">Cancel</button>
-                              </div>
-                            </form>
-                          ) : (
-                            <button
-                              onClick={openAddPanel}
-                              className="text-xs text-ops-accent hover:text-ops-accent/80 transition-colors"
-                            >
-                              + Add Panel
-                            </button>
-                          )}
-                        </>
-                      )}
+                  {clusterForm.grafana_auth_type === 'token' && (
+                    <div>
+                      <label className="block text-xs text-ops-muted mb-1">
+                        Service Account Token{editingId !== null ? '' : ' *'}
+                      </label>
+                      <input
+                        type="password"
+                        required={editingId === null}
+                        value={clusterForm.grafana_token}
+                        onChange={(e) => setClusterField('grafana_token', e.target.value)}
+                        placeholder={editingId !== null ? 'Leave blank to keep existing' : 'glsa_...'}
+                        className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                      />
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
-          ))}
-          {environments.length === 0 && (
-            <p className="text-xs text-ops-muted italic">No environments yet. Create an organization first.</p>
-          )}
-        </div>
-      </div>
 
-      <div className="border border-ops-border rounded overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-ops-surface border-b border-ops-border">
-            <tr>
-              <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">
-                Customer / Environment
-              </th>
-              <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">
-                Cluster
-              </th>
-              <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">
-                Grafana URL
-              </th>
-              <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">
-                Auth
-              </th>
-              <th className="px-4 py-2 text-right text-xs text-ops-muted font-semibold uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ops-border">
-            {clusters.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-4 text-xs text-ops-muted text-center">
-                  No clusters configured.
-                </td>
-              </tr>
-            ) : (
-              clusters.map((cluster) => (
-                <tr key={cluster.id} className="bg-ops-bg hover:bg-ops-surface/50 transition-colors">
-                  <td className="px-4 py-2.5 text-xs text-ops-muted">
-                    <span className="font-semibold text-white">{cluster.customer}</span>
-                    <span className="mx-1 text-ops-border">/</span>
-                    <span className="italic">{cluster.environment}</span>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-white font-mono">{cluster.name}</td>
-                  <td className="px-4 py-2.5 text-xs text-ops-muted font-mono truncate max-w-xs">
-                    {cluster.grafana_url || <span className="italic">not set</span>}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">
-                    <span
-                      className={`px-1.5 py-0.5 rounded font-mono ${
-                        cluster.grafana_auth_type === 'keycloak'
-                          ? 'bg-blue-500/20 text-blue-400'
-                          : 'bg-ops-border text-ops-muted'
-                      }`}
-                    >
-                      {cluster.grafana_auth_type === 'keycloak' ? 'keycloak' : 'token'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-right space-x-2">
+                  {clusterForm.grafana_auth_type === 'keycloak' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-ops-muted mb-1">Client ID *</label>
+                        <input
+                          type="text"
+                          required
+                          value={clusterForm.grafana_client_id}
+                          onChange={(e) => setClusterField('grafana_client_id', e.target.value)}
+                          className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-ops-muted mb-1">
+                          Client Secret{editingId !== null ? '' : ' *'}
+                        </label>
+                        <input
+                          type="password"
+                          required={editingId === null}
+                          value={clusterForm.grafana_token}
+                          onChange={(e) => setClusterField('grafana_token', e.target.value)}
+                          placeholder={editingId !== null ? 'Leave blank to keep existing' : ''}
+                          className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs text-ops-muted mb-1">Token URL *</label>
+                        <input
+                          type="text"
+                          required
+                          value={clusterForm.grafana_token_url}
+                          onChange={(e) => setClusterField('grafana_token_url', e.target.value)}
+                          placeholder="https://keycloak.example.com/auth/realms/myrealm/protocol/openid-connect/token"
+                          className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-ops-accent"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {clusterFormError && <p className="text-ops-danger text-xs">{clusterFormError}</p>}
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => openEdit(cluster)}
-                      className="text-ops-muted hover:text-white transition-colors"
+                      type="submit"
+                      disabled={clusterSaving}
+                      className="text-xs bg-ops-accent text-black font-semibold px-3 py-1.5 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
                     >
-                      Edit
+                      {clusterSaving ? 'Saving...' : editingId !== null ? 'Save Changes' : 'Create Cluster'}
                     </button>
-                    <button
-                      onClick={() => handleDelete(cluster.id, cluster.name)}
-                      className="text-ops-danger hover:text-red-400 transition-colors"
-                    >
-                      Delete
+                    <button type="button" onClick={closeClusterForm} className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1.5 transition-colors">
+                      Cancel
                     </button>
-                  </td>
-                </tr>
-              ))
+                  </div>
+                </form>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+
+            <div className="border border-ops-border rounded overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-ops-surface border-b border-ops-border">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">Environment</th>
+                    <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">Cluster</th>
+                    <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">Grafana URL</th>
+                    <th className="px-4 py-2 text-left text-xs text-ops-muted font-semibold uppercase tracking-wider">Auth</th>
+                    <th className="px-4 py-2 text-right text-xs text-ops-muted font-semibold uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ops-border">
+                  {orgClusters.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-4 text-xs text-ops-muted text-center">
+                        No clusters in this organization.
+                      </td>
+                    </tr>
+                  ) : (
+                    orgClusters.map((cluster) => (
+                      <tr key={cluster.id} className="bg-ops-bg hover:bg-ops-surface/50 transition-colors">
+                        <td className="px-4 py-2.5 text-xs text-ops-muted italic">{cluster.environment}</td>
+                        <td className="px-4 py-2.5 text-xs text-white font-mono">{cluster.name}</td>
+                        <td className="px-4 py-2.5 text-xs text-ops-muted font-mono truncate max-w-xs">
+                          {cluster.grafana_url || <span className="italic">not set</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs">
+                          <span className={`px-1.5 py-0.5 rounded font-mono ${
+                            cluster.grafana_auth_type === 'keycloak'
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'bg-ops-border text-ops-muted'
+                          }`}>
+                            {cluster.grafana_auth_type === 'keycloak' ? 'keycloak' : 'token'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-right space-x-2">
+                          <button onClick={() => openEdit(cluster)} className="text-ops-muted hover:text-white transition-colors">Edit</button>
+                          <button onClick={() => handleDelete(cluster.id, cluster.name)} className="text-ops-danger hover:text-red-400 transition-colors">Delete</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
