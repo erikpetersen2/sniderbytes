@@ -27,6 +27,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	clustersHandler := &handlers.ClustersHandler{DB: pool}
 	metricsHandler := &handlers.MetricsHandler{DB: pool, Clusters: clustersHandler}
 	usersHandler := &handlers.UsersHandler{DB: pool}
+	adminClustersHandler := &handlers.AdminClustersHandler{DB: pool}
 
 	api := r.Group("/api")
 	api.POST("/auth/login", authHandler.Login)
@@ -37,8 +38,13 @@ func New(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	protected.GET("/clusters/:id/metrics", metricsHandler.GetMetrics)
 	protected.GET("/clusters/:id/alerts", metricsHandler.GetAlerts)
 
-	admin := protected.Group("/", middleware.AdminOnly())
-	admin.GET("/users", usersHandler.List)
+	adminGroup := protected.Group("/admin", middleware.AdminOnly())
+	adminGroup.GET("/users", usersHandler.List)
+	adminGroup.GET("/clusters", adminClustersHandler.List)
+	adminGroup.POST("/clusters", adminClustersHandler.Create)
+	adminGroup.PUT("/clusters/:id", adminClustersHandler.Update)
+	adminGroup.DELETE("/clusters/:id", adminClustersHandler.Delete)
+	adminGroup.GET("/environments", handlers.ListEnvironments(pool))
 
 	return r
 }

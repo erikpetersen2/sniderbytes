@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/url"
 	"math/rand"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/sniderbytes/api/models"
@@ -16,16 +18,85 @@ import (
 
 var ErrGrafanaUnreachable = errors.New("grafana unreachable")
 
-var httpClient = &http.Client{Timeout: 5 * time.Second}
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// Config holds everything needed to authenticate against a Grafana instance.
+type Config struct {
+	URL      string
+	AuthType string // "token" or "keycloak"
+	Token    string // SA token (AuthType=token) or client secret (AuthType=keycloak)
+	ClientID string // keycloak only
+	TokenURL string // keycloak only, e.g. https://login.afwerx.dso.mil/auth/realms/baby-yoda/protocol/openid-connect/token
+}
+
+// --- Keycloak client credentials token cache ---
+
+type cachedToken struct {
+	value     string
+	expiresAt time.Time
+}
+
+var (
+	tokenCacheMu sync.RWMutex
+	tokenCache   = map[string]*cachedToken{}
+)
+
+func getBearerToken(cfg Config) (string, error) {
+	if cfg.AuthType != "keycloak" {
+		return cfg.Token, nil
+	}
+
+	key := cfg.ClientID + "@" + cfg.TokenURL
+
+	tokenCacheMu.RLock()
+	if t, ok := tokenCache[key]; ok && time.Now().Before(t.expiresAt) {
+		tokenCacheMu.RUnlock()
+		return t.value, nil
+	}
+	tokenCacheMu.RUnlock()
+
+	// Fetch new token
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", cfg.ClientID)
+	form.Set("client_secret", cfg.Token)
+
+	resp, err := httpClient.Post(cfg.TokenURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("keycloak token fetch failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || result.AccessToken == "" {
+		return "", fmt.Errorf("keycloak token parse failed: %s", string(body))
+	}
+
+	expiry := time.Now().Add(time.Duration(result.ExpiresIn-60) * time.Second)
+	tokenCacheMu.Lock()
+	tokenCache[key] = &cachedToken{value: result.AccessToken, expiresAt: expiry}
+	tokenCacheMu.Unlock()
+
+	return result.AccessToken, nil
+}
 
 // FetchMetrics calls the Grafana alerting API to get metrics.
-// Falls back to mock data if the URL is empty or the request fails.
-func FetchMetrics(grafanaURL, token string) (*models.MetricsPayload, error) {
-	if grafanaURL == "" {
+// Falls back to mock data if unreachable or unconfigured.
+func FetchMetrics(cfg Config) (*models.MetricsPayload, error) {
+	if cfg.URL == "" {
 		return mockMetrics(), nil
 	}
 
-	req, err := http.NewRequest("GET", grafanaURL+"/api/health", nil)
+	token, err := getBearerToken(cfg)
+	if err != nil {
+		return mockMetrics(), nil
+	}
+
+	req, err := http.NewRequest("GET", cfg.URL+"/api/health", nil)
 	if err != nil {
 		return mockMetrics(), nil
 	}
@@ -43,9 +114,7 @@ func FetchMetrics(grafanaURL, token string) (*models.MetricsPayload, error) {
 		return mockMetrics(), nil
 	}
 
-	// If Grafana is reachable, attempt real PromQL queries
-	// For now, return realistic-looking data using Grafana's query API
-	return fetchRealMetrics(grafanaURL, token)
+	return fetchRealMetrics(cfg.URL, token)
 }
 
 func fetchRealMetrics(grafanaURL, token string) (*models.MetricsPayload, error) {
@@ -83,8 +152,8 @@ func fetchRealMetrics(grafanaURL, token string) (*models.MetricsPayload, error) 
 func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 	params := url.Values{}
 	params.Set("query", expr)
-	url := fmt.Sprintf("%s/api/datasources/proxy/1/api/v1/query?%s", grafanaURL, params.Encode())
-	req, err := http.NewRequest("GET", url, nil)
+	u := fmt.Sprintf("%s/api/datasources/proxy/1/api/v1/query?%s", grafanaURL, params.Encode())
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -124,12 +193,17 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 
 // FetchAlerts calls the Grafana alertmanager API.
 // Falls back to mock alerts if unavailable.
-func FetchAlerts(grafanaURL, token string) ([]models.Alert, bool, error) {
-	if grafanaURL == "" {
+func FetchAlerts(cfg Config) ([]models.Alert, bool, error) {
+	if cfg.URL == "" {
 		return mockAlerts(), true, nil
 	}
 
-	req, err := http.NewRequest("GET", grafanaURL+"/api/alertmanager/grafana/api/v2/alerts", nil)
+	token, err := getBearerToken(cfg)
+	if err != nil {
+		return mockAlerts(), true, nil
+	}
+
+	req, err := http.NewRequest("GET", cfg.URL+"/api/alertmanager/grafana/api/v2/alerts", nil)
 	if err != nil {
 		return mockAlerts(), true, nil
 	}
@@ -149,9 +223,9 @@ func FetchAlerts(grafanaURL, token string) ([]models.Alert, bool, error) {
 
 	body, _ := io.ReadAll(resp.Body)
 	var raw []struct {
-		Labels      map[string]string `json:"labels"`
-		Status      struct{ State string } `json:"status"`
-		UpdatedAt   time.Time         `json:"updatedAt"`
+		Labels    map[string]string  `json:"labels"`
+		Status    struct{ State string } `json:"status"`
+		UpdatedAt time.Time          `json:"updatedAt"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return mockAlerts(), true, nil
@@ -169,7 +243,6 @@ func FetchAlerts(grafanaURL, token string) ([]models.Alert, bool, error) {
 	return alerts, false, nil
 }
 
-// mockMetrics returns realistic demo metric values.
 func mockMetrics() *models.MetricsPayload {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &models.MetricsPayload{
@@ -186,7 +259,6 @@ func mockMetrics() *models.MetricsPayload {
 	}
 }
 
-// mockAlerts returns demo alert data.
 func mockAlerts() []models.Alert {
 	now := time.Now()
 	return []models.Alert{

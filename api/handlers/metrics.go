@@ -35,15 +35,21 @@ func (h *MetricsHandler) GetMetrics(c *gin.Context) {
 		return
 	}
 
-	var grafanaURL, grafanaToken string
+	var grafanaURL, grafanaToken, grafanaAuthType, grafanaClientID, grafanaTokenURL string
 	if err := h.DB.QueryRow(context.Background(),
-		`SELECT grafana_url, grafana_token FROM clusters WHERE id = $1`, clusterID,
-	).Scan(&grafanaURL, &grafanaToken); err != nil {
+		`SELECT grafana_url, grafana_token, grafana_auth_type, grafana_client_id, grafana_token_url FROM clusters WHERE id = $1`, clusterID,
+	).Scan(&grafanaURL, &grafanaToken, &grafanaAuthType, &grafanaClientID, &grafanaTokenURL); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "cluster not found"})
 		return
 	}
 
-	payload, err := grafana.FetchMetrics(grafanaURL, grafanaToken)
+	payload, err := grafana.FetchMetrics(grafana.Config{
+		URL:      grafanaURL,
+		AuthType: grafanaAuthType,
+		Token:    grafanaToken,
+		ClientID: grafanaClientID,
+		TokenURL: grafanaTokenURL,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch metrics"})
 		return
@@ -72,15 +78,21 @@ func (h *MetricsHandler) GetAlerts(c *gin.Context) {
 		return
 	}
 
-	var grafanaURL, grafanaToken string
+	var grafanaURL, grafanaToken, grafanaAuthType, grafanaClientID, grafanaTokenURL string
 	if err := h.DB.QueryRow(context.Background(),
-		`SELECT grafana_url, grafana_token FROM clusters WHERE id = $1`, clusterID,
-	).Scan(&grafanaURL, &grafanaToken); err != nil {
+		`SELECT grafana_url, grafana_token, grafana_auth_type, grafana_client_id, grafana_token_url FROM clusters WHERE id = $1`, clusterID,
+	).Scan(&grafanaURL, &grafanaToken, &grafanaAuthType, &grafanaClientID, &grafanaTokenURL); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "cluster not found"})
 		return
 	}
 
-	alerts, isMock, err := grafana.FetchAlerts(grafanaURL, grafanaToken)
+	alerts, isMock, err := grafana.FetchAlerts(grafana.Config{
+		URL:      grafanaURL,
+		AuthType: grafanaAuthType,
+		Token:    grafanaToken,
+		ClientID: grafanaClientID,
+		TokenURL: grafanaTokenURL,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch alerts"})
 		return

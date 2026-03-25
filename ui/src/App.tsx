@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import OverviewPage from './pages/OverviewPage'
 import AlertsPage from './pages/AlertsPage'
 import UsersPage from './pages/UsersPage'
+import ClustersAdminPage from './pages/ClustersAdminPage'
 
 function RedirectToFirstCluster() {
   return <Navigate to="/" replace />
@@ -56,6 +57,16 @@ export default function App() {
               <AdminRoute>
                 <Layout>
                   <UsersPage />
+                </Layout>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/clusters"
+            element={
+              <AdminRoute>
+                <Layout>
+                  <ClustersAdminPage />
                 </Layout>
               </AdminRoute>
             }

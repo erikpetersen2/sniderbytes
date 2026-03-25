@@ -107,6 +107,16 @@ export default function Sidebar() {
           >
             User Management
           </NavLink>
+          <NavLink
+            to="/admin/clusters"
+            className={({ isActive }) =>
+              `block px-4 py-1.5 text-xs ${
+                isActive ? 'text-ops-accent' : 'text-ops-muted hover:text-gray-300'
+              }`
+            }
+          >
+            Cluster Management
+          </NavLink>
         </div>
       )}
 

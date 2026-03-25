@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AlertsPayload, Cluster, LoginResponse, MetricsPayload, User } from '../types'
+import type { AlertsPayload, Cluster, ClusterAdmin, EnvironmentOption, LoginResponse, MetricsPayload, User } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -51,6 +51,39 @@ export async function getAlerts(clusterId: number): Promise<AlertsPayload> {
 }
 
 export async function getUsers(): Promise<User[]> {
-  const { data } = await api.get<User[]>('/users')
+  const { data } = await api.get<User[]>('/admin/users')
+  return data
+}
+
+export async function getAdminClusters(): Promise<ClusterAdmin[]> {
+  const { data } = await api.get<ClusterAdmin[]>('/admin/clusters')
+  return data
+}
+
+export interface ClusterWriteRequest {
+  name: string
+  environment_id: number
+  grafana_url: string
+  grafana_auth_type: 'token' | 'keycloak'
+  grafana_token: string
+  grafana_client_id: string
+  grafana_token_url: string
+}
+
+export async function createAdminCluster(req: ClusterWriteRequest): Promise<{ id: number }> {
+  const { data } = await api.post<{ id: number }>('/admin/clusters', req)
+  return data
+}
+
+export async function updateAdminCluster(id: number, req: Partial<ClusterWriteRequest>): Promise<void> {
+  await api.put(`/admin/clusters/${id}`, req)
+}
+
+export async function deleteAdminCluster(id: number): Promise<void> {
+  await api.delete(`/admin/clusters/${id}`)
+}
+
+export async function getEnvironments(): Promise<EnvironmentOption[]> {
+  const { data } = await api.get<EnvironmentOption[]>('/admin/environments')
   return data
 }

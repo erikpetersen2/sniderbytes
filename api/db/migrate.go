@@ -39,6 +39,10 @@ var migrations = []string{
 		DROP CONSTRAINT IF EXISTS user_cluster_access_user_id_fkey,
 		ADD CONSTRAINT user_cluster_access_user_id_fkey
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
+	`ALTER TABLE clusters
+    ADD COLUMN IF NOT EXISTS grafana_auth_type TEXT NOT NULL DEFAULT 'token',
+    ADD COLUMN IF NOT EXISTS grafana_client_id  TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS grafana_token_url  TEXT NOT NULL DEFAULT ''`,
 }
 
 func Migrate(pool *pgxpool.Pool) error {

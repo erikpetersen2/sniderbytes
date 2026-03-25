@@ -42,3 +42,21 @@ export interface LoginResponse {
   token: string
   user: User
 }
+
+export interface ClusterAdmin {
+  id: number
+  name: string
+  environment: string
+  environment_id: number
+  customer: string
+  grafana_url: string
+  grafana_auth_type: 'token' | 'keycloak'
+  grafana_client_id: string
+  grafana_token_url: string
+}
+
+export interface EnvironmentOption {
+  id: number
+  name: string
+  customer: string
+}
