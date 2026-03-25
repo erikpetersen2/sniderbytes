@@ -35,6 +35,10 @@ var migrations = []string{
 		cluster_id INT NOT NULL REFERENCES clusters(id),
 		PRIMARY KEY (user_id, cluster_id)
 	)`,
+	`ALTER TABLE user_cluster_access
+		DROP CONSTRAINT IF EXISTS user_cluster_access_user_id_fkey,
+		ADD CONSTRAINT user_cluster_access_user_id_fkey
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
 }
 
 func Migrate(pool *pgxpool.Pool) error {

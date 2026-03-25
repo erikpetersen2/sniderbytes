@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AlertsPayload, Cluster, LoginResponse, MetricsPayload } from '../types'
+import type { AlertsPayload, Cluster, CreateUserRequest, LoginResponse, MetricsPayload, User } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -40,4 +40,18 @@ export async function getMetrics(clusterId: number): Promise<MetricsPayload> {
 export async function getAlerts(clusterId: number): Promise<AlertsPayload> {
   const { data } = await api.get<AlertsPayload>(`/clusters/${clusterId}/alerts`)
   return data
+}
+
+export async function getUsers(): Promise<User[]> {
+  const { data } = await api.get<User[]>('/users')
+  return data
+}
+
+export async function createUser(req: CreateUserRequest): Promise<User> {
+  const { data } = await api.post<User>('/users', req)
+  return data
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  await api.delete(`/users/${id}`)
 }

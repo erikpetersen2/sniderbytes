@@ -94,6 +94,22 @@ export default function Sidebar() {
         )}
       </nav>
 
+      {/* Admin links */}
+      {user?.role === 'admin' && (
+        <div className="border-t border-ops-border py-2">
+          <NavLink
+            to="/users"
+            className={({ isActive }) =>
+              `block px-4 py-1.5 text-xs ${
+                isActive ? 'text-ops-accent' : 'text-ops-muted hover:text-gray-300'
+              }`
+            }
+          >
+            User Management
+          </NavLink>
+        </div>
+      )}
+
       {/* User info */}
       <div className="border-t border-ops-border px-4 py-3">
         <div className="flex items-center justify-between">

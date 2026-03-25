@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
 import ProtectedRoute from './routes/ProtectedRoute'
+import AdminRoute from './routes/AdminRoute'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import OverviewPage from './pages/OverviewPage'
 import AlertsPage from './pages/AlertsPage'
+import UsersPage from './pages/UsersPage'
 
 function RedirectToFirstCluster() {
   return <Navigate to="/" replace />
@@ -46,6 +48,16 @@ export default function App() {
                   <AlertsPage />
                 </Layout>
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <AdminRoute>
+                <Layout>
+                  <UsersPage />
+                </Layout>
+              </AdminRoute>
             }
           />
           <Route path="*" element={<RedirectToFirstCluster />} />

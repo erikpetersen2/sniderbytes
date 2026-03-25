@@ -38,6 +38,13 @@ export interface AlertsPayload {
   mock: boolean
 }
 
+export interface CreateUserRequest {
+  username: string
+  password: string
+  role: 'admin' | 'viewer'
+  cluster_ids: number[]
+}
+
 export interface LoginResponse {
   token: string
   user: User
