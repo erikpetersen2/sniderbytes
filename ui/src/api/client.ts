@@ -91,3 +91,21 @@ export async function getEnvironments(): Promise<EnvironmentOption[]> {
 export async function createOrganization(customerName: string, environmentName: string): Promise<void> {
   await api.post('/admin/organizations', { customer_name: customerName, environment_name: environmentName })
 }
+
+export async function getPanels(environmentId: number): Promise<import('../types').Panel[]> {
+  const { data } = await api.get(`/admin/environments/${environmentId}/panels`)
+  return data
+}
+
+export async function createPanel(environmentId: number, panel: { name: string; expr: string; unit: string; position: number }): Promise<{ id: number }> {
+  const { data } = await api.post(`/admin/environments/${environmentId}/panels`, panel)
+  return data
+}
+
+export async function updatePanel(id: number, panel: { name: string; expr: string; unit: string; position: number }): Promise<void> {
+  await api.put(`/admin/panels/${id}`, panel)
+}
+
+export async function deletePanel(id: number): Promise<void> {
+  await api.delete(`/admin/panels/${id}`)
+}

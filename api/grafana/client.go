@@ -84,21 +84,41 @@ func getBearerToken(cfg Config) (string, error) {
 	return result.AccessToken, nil
 }
 
-// FetchMetrics calls the Grafana alerting API to get metrics.
-// Falls back to mock data if unreachable or unconfigured.
-func FetchMetrics(cfg Config) (*models.MetricsPayload, error) {
+// PanelConfig defines a single metrics panel — its display name, PromQL expression, and unit.
+type PanelConfig struct {
+	Name string
+	Expr string
+	Unit string
+}
+
+var defaultPanels = []PanelConfig{
+	{"CPU Usage", `avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) * 100`, "%"},
+	{"Memory Usage", `(1 - avg(node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`, "%"},
+	{"Pod Count", `count(kube_pod_info)`, ""},
+	{"Request Rate", `sum(rate(http_requests_total[5m]))`, "req/s"},
+	{"Error Rate", `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100`, "%"},
+}
+
+// FetchMetrics calls Grafana/Prometheus for configured panels.
+// Falls back to mock data if Grafana is unreachable or unconfigured.
+// If panels is empty, the built-in defaults are used.
+func FetchMetrics(cfg Config, panels []PanelConfig) (*models.MetricsPayload, error) {
+	if len(panels) == 0 {
+		panels = defaultPanels
+	}
+
 	if cfg.URL == "" {
-		return mockMetrics(), nil
+		return mockMetrics(panels), nil
 	}
 
 	token, err := getBearerToken(cfg)
 	if err != nil {
-		return mockMetrics(), nil
+		return mockMetrics(panels), nil
 	}
 
 	req, err := http.NewRequest("GET", cfg.URL+"/api/health", nil)
 	if err != nil {
-		return mockMetrics(), nil
+		return mockMetrics(panels), nil
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -106,44 +126,32 @@ func FetchMetrics(cfg Config) (*models.MetricsPayload, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return mockMetrics(), nil
+		return mockMetrics(panels), nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return mockMetrics(), nil
+		return mockMetrics(panels), nil
 	}
 
-	return fetchRealMetrics(cfg.URL, token)
+	return fetchRealMetrics(cfg.URL, token, panels)
 }
 
-func fetchRealMetrics(grafanaURL, token string) (*models.MetricsPayload, error) {
-	queries := []struct {
-		expr string
-		name string
-		unit string
-	}{
-		{`avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) * 100`, "CPU Usage", "%"},
-		{`(1 - avg(node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`, "Memory Usage", "%"},
-		{`count(kube_pod_info)`, "Pod Count", ""},
-		{`sum(rate(http_requests_total[5m]))`, "Request Rate", "req/s"},
-		{`sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100`, "Error Rate", "%"},
-	}
-
+func fetchRealMetrics(grafanaURL, token string, panels []PanelConfig) (*models.MetricsPayload, error) {
 	payload := &models.MetricsPayload{
-		Metrics:   make([]models.MetricValue, 0, len(queries)),
+		Metrics:   make([]models.MetricValue, 0, len(panels)),
 		FetchedAt: time.Now(),
 	}
 
-	for _, q := range queries {
-		val, err := queryPromQL(grafanaURL, token, q.expr)
+	for _, p := range panels {
+		val, err := queryPromQL(grafanaURL, token, p.Expr)
 		if err != nil {
-			return mockMetrics(), nil
+			return mockMetrics(panels), nil
 		}
 		payload.Metrics = append(payload.Metrics, models.MetricValue{
-			Name:  q.name,
+			Name:  p.Name,
 			Value: val,
-			Unit:  q.unit,
+			Unit:  p.Unit,
 		})
 	}
 	return payload, nil
@@ -243,17 +251,18 @@ func FetchAlerts(cfg Config) ([]models.Alert, bool, error) {
 	return alerts, false, nil
 }
 
-func mockMetrics() *models.MetricsPayload {
+func mockMetrics(panels []PanelConfig) *models.MetricsPayload {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	metrics := make([]models.MetricValue, 0, len(panels))
+	for _, p := range panels {
+		metrics = append(metrics, models.MetricValue{
+			Name:  p.Name,
+			Value: round(r.Float64() * 100),
+			Unit:  p.Unit,
+		})
+	}
 	return &models.MetricsPayload{
-		Metrics: []models.MetricValue{
-			{Name: "CPU Usage", Value: round(20 + r.Float64()*40), Unit: "%"},
-			{Name: "Memory Usage", Value: round(40 + r.Float64()*30), Unit: "%"},
-			{Name: "Pod Count", Value: float64(12 + r.Intn(20)), Unit: ""},
-			{Name: "Request Rate", Value: round(100 + r.Float64()*500), Unit: "req/s"},
-			{Name: "Error Rate", Value: round(r.Float64() * 3), Unit: "%"},
-			{Name: "P99 Latency", Value: round(50 + r.Float64()*150), Unit: "ms"},
-		},
+		Metrics:   metrics,
 		Mock:      true,
 		FetchedAt: time.Now(),
 	}

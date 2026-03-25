@@ -43,6 +43,14 @@ var migrations = []string{
     ADD COLUMN IF NOT EXISTS grafana_auth_type TEXT NOT NULL DEFAULT 'token',
     ADD COLUMN IF NOT EXISTS grafana_client_id  TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS grafana_token_url  TEXT NOT NULL DEFAULT ''`,
+	`CREATE TABLE IF NOT EXISTS panels (
+		id             SERIAL PRIMARY KEY,
+		environment_id INT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL,
+		expr           TEXT NOT NULL,
+		unit           TEXT NOT NULL DEFAULT '',
+		position       INT NOT NULL DEFAULT 0
+	)`,
 }
 
 func Migrate(pool *pgxpool.Pool) error {

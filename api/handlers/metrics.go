@@ -36,11 +36,25 @@ func (h *MetricsHandler) GetMetrics(c *gin.Context) {
 	}
 
 	var grafanaURL, grafanaToken, grafanaAuthType, grafanaClientID, grafanaTokenURL string
+	var envID int
 	if err := h.DB.QueryRow(context.Background(),
-		`SELECT grafana_url, grafana_token, grafana_auth_type, grafana_client_id, grafana_token_url FROM clusters WHERE id = $1`, clusterID,
-	).Scan(&grafanaURL, &grafanaToken, &grafanaAuthType, &grafanaClientID, &grafanaTokenURL); err != nil {
+		`SELECT grafana_url, grafana_token, grafana_auth_type, grafana_client_id, grafana_token_url, environment_id FROM clusters WHERE id = $1`, clusterID,
+	).Scan(&grafanaURL, &grafanaToken, &grafanaAuthType, &grafanaClientID, &grafanaTokenURL, &envID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "cluster not found"})
 		return
+	}
+
+	var panels []grafana.PanelConfig
+	if rows, err := h.DB.Query(context.Background(),
+		`SELECT name, expr, unit FROM panels WHERE environment_id = $1 ORDER BY position, id`, envID,
+	); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var p grafana.PanelConfig
+			if rows.Scan(&p.Name, &p.Expr, &p.Unit) == nil {
+				panels = append(panels, p)
+			}
+		}
 	}
 
 	payload, err := grafana.FetchMetrics(grafana.Config{
@@ -49,7 +63,7 @@ func (h *MetricsHandler) GetMetrics(c *gin.Context) {
 		Token:    grafanaToken,
 		ClientID: grafanaClientID,
 		TokenURL: grafanaTokenURL,
-	})
+	}, panels)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch metrics"})
 		return

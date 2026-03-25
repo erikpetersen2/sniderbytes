@@ -60,3 +60,11 @@ export interface EnvironmentOption {
   name: string
   customer: string
 }
+
+export interface Panel {
+  id: number
+  name: string
+  expr: string
+  unit: string
+  position: number
+}
