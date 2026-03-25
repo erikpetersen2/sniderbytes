@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -29,6 +30,14 @@ func initJWKS(jwksURL string) error {
 	}
 	jwksInst = kf
 	return nil
+}
+
+func claimKeys(c jwt.MapClaims) []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // mapGroups maps Keycloak group paths to a sniderbytes role and any customer
@@ -129,6 +138,7 @@ func Auth(db *pgxpool.Pool, jwtSecret, jwksURL string) gin.HandlerFunc {
 
 		role, customerNames := mapGroups(groups)
 		if role == "" {
+			log.Printf("[auth] no role mapped for user=%q groups=%v claims_keys=%v", username, groups, claimKeys(claims))
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "no sniderbytes access"})
 			return
 		}

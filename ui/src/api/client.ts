@@ -18,7 +18,7 @@ api.interceptors.response.use(
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
-    if (err.response?.status === 403) {
+    if (err.response?.status === 403 && !err.config?.url?.includes('/auth/')) {
       window.location.href = '/'
     }
     return Promise.reject(err)
