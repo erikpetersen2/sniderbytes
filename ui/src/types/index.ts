@@ -13,6 +13,7 @@ export interface Cluster {
 }
 
 export interface MetricValue {
+  panel_id?: number
   name: string
   value: number
   unit: string

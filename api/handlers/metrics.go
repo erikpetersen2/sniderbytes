@@ -46,12 +46,12 @@ func (h *MetricsHandler) GetMetrics(c *gin.Context) {
 
 	var panels []grafana.PanelConfig
 	if rows, err := h.DB.Query(context.Background(),
-		`SELECT name, expr, unit FROM panels WHERE environment_id = $1 ORDER BY position, id`, envID,
+		`SELECT id, name, expr, unit FROM panels WHERE environment_id = $1 ORDER BY position, id`, envID,
 	); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var p grafana.PanelConfig
-			if rows.Scan(&p.Name, &p.Expr, &p.Unit) == nil {
+			if rows.Scan(&p.ID, &p.Name, &p.Expr, &p.Unit) == nil {
 				panels = append(panels, p)
 			}
 		}

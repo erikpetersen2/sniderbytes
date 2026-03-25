@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getMetrics, getNamespaces } from '../api/client'
+import { getMetrics, getNamespaces, getClusterPanels } from '../api/client'
 import MetricCard from '../components/MetricCard'
-import type { MetricsPayload } from '../types'
+import type { MetricsPayload, Panel } from '../types'
 
 export default function OverviewPage() {
   const { id } = useParams<{ id: string }>()
@@ -11,13 +11,17 @@ export default function OverviewPage() {
   const [error, setError] = useState('')
   const [namespaces, setNamespaces] = useState<string[]>([])
   const [namespace, setNamespace] = useState('')
+  const [panels, setPanels] = useState<Panel[]>([])
 
-  // Fetch namespace list once per cluster
+  // Fetch namespace list and panel exprs once per cluster
   useEffect(() => {
     if (!id) return
+    const clusterId = parseInt(id)
     setNamespaces([])
     setNamespace('')
-    getNamespaces(parseInt(id)).then(setNamespaces).catch(() => {})
+    setPanels([])
+    getNamespaces(clusterId).then(setNamespaces).catch(() => {})
+    getClusterPanels(clusterId).then(setPanels).catch(() => {})
   }, [id])
 
   // Fetch metrics whenever cluster or namespace changes; reset 30s poll
@@ -39,6 +43,16 @@ export default function OverviewPage() {
     const interval = setInterval(fetch, 30_000)
     return () => clearInterval(interval)
   }, [id, namespace])
+
+  // When a panel is saved, update our local panel expr so the next edit opens current value
+  const handlePanelSaved = (panelId: number, name: string, expr: string, unit: string) => {
+    setPanels((prev) =>
+      prev.map((p) => (p.id === panelId ? { ...p, name, expr, unit } : p))
+    )
+  }
+
+  const clusterId = id ? parseInt(id) : 0
+  const panelExprMap = Object.fromEntries(panels.map((p) => [p.id, p.expr]))
 
   return (
     <div className="p-6">
@@ -85,10 +99,15 @@ export default function OverviewPage() {
           {data.metrics.map((m) => (
             <MetricCard
               key={m.name}
+              clusterId={clusterId}
+              panelId={m.panel_id}
               name={m.name}
               value={m.value}
               unit={m.unit}
+              expr={m.panel_id ? panelExprMap[m.panel_id] : undefined}
               isMock={data.mock}
+              namespace={namespace}
+              onSaved={handlePanelSaved}
             />
           ))}
         </div>

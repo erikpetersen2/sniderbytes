@@ -85,18 +85,20 @@ func getBearerToken(cfg Config) (string, error) {
 }
 
 // PanelConfig defines a single metrics panel — its display name, PromQL expression, and unit.
+// ID is 0 for built-in defaults (not editable by viewers).
 type PanelConfig struct {
+	ID   int
 	Name string
 	Expr string
 	Unit string
 }
 
 var defaultPanels = []PanelConfig{
-	{"CPU Usage", `avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`, "%"},
-	{"Memory Usage", `(1 - avg(node_memory_MemAvailable_bytes{namespace=~"$namespace"} / node_memory_MemTotal_bytes{namespace=~"$namespace"})) * 100`, "%"},
-	{"Pod Count", `count(kube_pod_info{namespace=~"$namespace"})`, ""},
-	{"Request Rate", `sum(rate(http_requests_total{namespace=~"$namespace"}[5m]))`, "req/s"},
-	{"Error Rate", `sum(rate(http_requests_total{status=~"5..",namespace=~"$namespace"}[5m])) / sum(rate(http_requests_total{namespace=~"$namespace"}[5m])) * 100`, "%"},
+	{Name: "CPU Usage", Expr: `avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`, Unit: "%"},
+	{Name: "Memory Usage", Expr: `(1 - avg(node_memory_MemAvailable_bytes{namespace=~"$namespace"} / node_memory_MemTotal_bytes{namespace=~"$namespace"})) * 100`, Unit: "%"},
+	{Name: "Pod Count", Expr: `count(kube_pod_info{namespace=~"$namespace"})`, Unit: ""},
+	{Name: "Request Rate", Expr: `sum(rate(http_requests_total{namespace=~"$namespace"}[5m]))`, Unit: "req/s"},
+	{Name: "Error Rate", Expr: `sum(rate(http_requests_total{status=~"5..",namespace=~"$namespace"}[5m])) / sum(rate(http_requests_total{namespace=~"$namespace"}[5m])) * 100`, Unit: "%"},
 }
 
 // FetchNamespaces returns the list of Kubernetes namespaces visible in Prometheus.
@@ -187,9 +189,10 @@ func fetchRealMetrics(grafanaURL, token string, panels []PanelConfig, namespace 
 			return mockMetrics(panels), nil
 		}
 		payload.Metrics = append(payload.Metrics, models.MetricValue{
-			Name:  p.Name,
-			Value: val,
-			Unit:  p.Unit,
+			PanelID: p.ID,
+			Name:    p.Name,
+			Value:   val,
+			Unit:    p.Unit,
 		})
 	}
 	return payload, nil

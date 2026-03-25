@@ -51,6 +51,20 @@ export async function getNamespaces(clusterId: number): Promise<string[]> {
   return data
 }
 
+export async function getClusterPanels(clusterId: number): Promise<import('../types').Panel[]> {
+  const { data } = await api.get(`/clusters/${clusterId}/panels`)
+  return data
+}
+
+export async function updatePanelForCluster(clusterId: number, panelId: number, panel: { name: string; expr: string; unit: string }): Promise<void> {
+  await api.put(`/clusters/${clusterId}/panels/${panelId}`, panel)
+}
+
+export async function testQueryForCluster(clusterId: number, expr: string, namespace?: string): Promise<{ value: number }> {
+  const { data } = await api.post(`/clusters/${clusterId}/test-query`, { expr, namespace: namespace ?? '' })
+  return data
+}
+
 export async function getAlerts(clusterId: number): Promise<AlertsPayload> {
   const { data } = await api.get<AlertsPayload>(`/clusters/${clusterId}/alerts`)
   return data
