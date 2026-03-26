@@ -2,10 +2,9 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import * as api from '../api/client'
 import type { User } from '../types'
 
-const KEYCLOAK_LOGOUT_URL =
-  'https://login.secondfront.com/auth/realms/gamewarden/protocol/openid-connect/logout' +
-  '?redirect_uri=' +
-  encodeURIComponent('https://sniderbytes.dev.secondfront.com')
+// /globallogout is the authservice logout path for this chain — it clears
+// the authservice session cookie then redirects to Keycloak's logout endpoint.
+const LOGOUT_URL = '/globallogout'
 
 interface AuthState {
   user: User | null
@@ -37,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem('token')
     // Redirect to Keycloak logout so SSO sessions are also cleared
-    window.location.href = KEYCLOAK_LOGOUT_URL
+    window.location.href = LOGOUT_URL
   }, [])
 
   return (
