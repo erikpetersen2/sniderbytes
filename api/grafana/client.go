@@ -227,7 +227,9 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 
 	body, _ := io.ReadAll(resp.Body)
 	var result struct {
-		Data struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+		Data   struct {
 			Result []struct {
 				Value []interface{} `json:"value"`
 			} `json:"result"`
@@ -235,6 +237,9 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return 0, fmt.Errorf("unexpected response")
+	}
+	if result.Status == "error" {
+		return 0, fmt.Errorf("%s", result.Error)
 	}
 	if len(result.Data.Result) == 0 {
 		return 0, nil
