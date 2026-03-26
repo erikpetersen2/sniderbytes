@@ -227,9 +227,10 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 
 	body, _ := io.ReadAll(resp.Body)
 	var result struct {
-		Status string `json:"status"`
-		Error  string `json:"error"`
-		Data   struct {
+		Status  string `json:"status"`
+		Error   string `json:"error"`
+		Message string `json:"message"` // Grafana proxy error format
+		Data    struct {
 			Result []struct {
 				Value []interface{} `json:"value"`
 			} `json:"result"`
@@ -238,8 +239,16 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return 0, fmt.Errorf("unexpected response")
 	}
+	// Prometheus returns {"status":"error","error":"..."} for bad expressions.
+	// Grafana's datasource proxy returns HTTP 4xx with {"message":"..."}.
 	if result.Status == "error" {
 		return 0, fmt.Errorf("%s", result.Error)
+	}
+	if resp.StatusCode != http.StatusOK {
+		if result.Message != "" {
+			return 0, fmt.Errorf("%s", result.Message)
+		}
+		return 0, fmt.Errorf("query failed (HTTP %d)", resp.StatusCode)
 	}
 	if len(result.Data.Result) == 0 {
 		return 0, nil
