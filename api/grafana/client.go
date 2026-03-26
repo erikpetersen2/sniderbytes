@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"math/rand"
 	"net/http"
@@ -238,11 +237,8 @@ func queryPromQL(grafanaURL, token, expr string) (float64, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		log.Printf("queryPromQL: HTTP %d, raw body: %s", resp.StatusCode, string(body))
 		return 0, fmt.Errorf("unexpected response")
 	}
-	log.Printf("queryPromQL: HTTP %d status=%q error=%q message=%q results=%d",
-		resp.StatusCode, result.Status, result.Error, result.Message, len(result.Data.Result))
 	// Prometheus returns {"status":"error","error":"..."} for bad expressions.
 	// Grafana's datasource proxy returns HTTP 4xx with {"message":"..."}.
 	if result.Status == "error" {
