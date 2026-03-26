@@ -60,6 +60,15 @@ export async function updatePanelForCluster(clusterId: number, panelId: number, 
   await api.put(`/clusters/${clusterId}/panels/${panelId}`, panel)
 }
 
+export async function createPanelForCluster(clusterId: number, panel: { name: string; expr: string; unit: string }): Promise<{ id: number }> {
+  const { data } = await api.post(`/clusters/${clusterId}/panels`, panel)
+  return data
+}
+
+export async function deletePanelForCluster(clusterId: number, panelId: number): Promise<void> {
+  await api.delete(`/clusters/${clusterId}/panels/${panelId}`)
+}
+
 export async function testQueryForCluster(clusterId: number, expr: string, namespace?: string): Promise<{ value: number }> {
   const { data } = await api.post(`/clusters/${clusterId}/test-query`, { expr, namespace: namespace ?? '' })
   return data

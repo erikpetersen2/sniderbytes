@@ -209,6 +209,112 @@ func UpdatePanelForCluster(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
+// CreatePanelForCluster lets any user with cluster access add a new panel to
+// the cluster's environment. Position is auto-assigned after the current max.
+func CreatePanelForCluster(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.MustGet("userID").(int)
+		role := c.MustGet("role").(string)
+		clusterID := c.Param("id")
+
+		var hasAccess bool
+		if role == "admin" {
+			hasAccess = true
+		} else {
+			if err := db.QueryRow(context.Background(),
+				`SELECT EXISTS(SELECT 1 FROM user_cluster_access WHERE user_id=$1 AND cluster_id=$2)`,
+				userID, clusterID,
+			).Scan(&hasAccess); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+		}
+		if !hasAccess {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		var envID int
+		if err := db.QueryRow(context.Background(),
+			`SELECT environment_id FROM clusters WHERE id=$1`, clusterID,
+		).Scan(&envID); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "cluster not found"})
+			return
+		}
+
+		var req struct {
+			Name string `json:"name" binding:"required"`
+			Expr string `json:"expr" binding:"required"`
+			Unit string `json:"unit"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var position int
+		_ = db.QueryRow(context.Background(),
+			`SELECT COALESCE(MAX(position), -1) + 1 FROM panels WHERE environment_id=$1`, envID,
+		).Scan(&position)
+
+		var id int
+		if err := db.QueryRow(context.Background(),
+			`INSERT INTO panels (environment_id, name, expr, unit, position) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			envID, req.Name, req.Expr, req.Unit, position,
+		).Scan(&id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"id": id})
+	}
+}
+
+// DeletePanelForCluster lets any user with cluster access delete a panel that
+// belongs to the cluster's environment.
+func DeletePanelForCluster(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.MustGet("userID").(int)
+		role := c.MustGet("role").(string)
+		clusterID := c.Param("id")
+		panelID := c.Param("panelId")
+
+		var hasAccess bool
+		if role == "admin" {
+			hasAccess = true
+		} else {
+			if err := db.QueryRow(context.Background(),
+				`SELECT EXISTS(SELECT 1 FROM user_cluster_access WHERE user_id=$1 AND cluster_id=$2)`,
+				userID, clusterID,
+			).Scan(&hasAccess); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+		}
+		if !hasAccess {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		var exists bool
+		if err := db.QueryRow(context.Background(), `
+			SELECT EXISTS(
+				SELECT 1 FROM panels p
+				JOIN clusters cl ON cl.environment_id = p.environment_id
+				WHERE p.id=$1 AND cl.id=$2
+			)`, panelID, clusterID,
+		).Scan(&exists); err != nil || !exists {
+			c.JSON(http.StatusNotFound, gin.H{"error": "panel not found"})
+			return
+		}
+
+		if _, err := db.Exec(context.Background(), `DELETE FROM panels WHERE id=$1`, panelID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
 // TestQueryForCluster runs a PromQL expression against a cluster's Grafana
 // for any user with access to that cluster.
 func TestQueryForCluster(db *pgxpool.Pool) gin.HandlerFunc {

@@ -6,14 +6,9 @@ import {
   deleteAdminCluster,
   getEnvironments,
   createOrganization,
-  getPanels,
-  createPanel,
-  updatePanel,
-  deletePanel,
-  testPanelQuery,
   type ClusterWriteRequest,
 } from '../api/client'
-import type { ClusterAdmin, EnvironmentOption, Panel } from '../types'
+import type { ClusterAdmin, EnvironmentOption } from '../types'
 
 const emptyClusterForm: ClusterWriteRequest = {
   name: '',
@@ -47,18 +42,6 @@ export default function ClustersAdminPage() {
   const [orgSaving, setOrgSaving] = useState(false)
   const [orgFormError, setOrgFormError] = useState('')
 
-  // panel management
-  const [activePanelEnvId, setActivePanelEnvId] = useState<number | null>(null)
-  const [panels, setPanels] = useState<Panel[]>([])
-  const [panelsLoading, setPanelsLoading] = useState(false)
-  const [editingPanelId, setEditingPanelId] = useState<number | null>(null)
-  const [showPanelForm, setShowPanelForm] = useState(false)
-  const [panelForm, setPanelForm] = useState({ name: '', expr: '', unit: '', position: 0 })
-  const [panelSaving, setPanelSaving] = useState(false)
-  const [panelFormError, setPanelFormError] = useState('')
-  const [queryRunning, setQueryRunning] = useState(false)
-  const [queryResult, setQueryResult] = useState<{ value?: number; error?: string } | null>(null)
-
   const loadData = () => {
     setLoading(true)
     Promise.all([getAdminClusters(), getEnvironments()])
@@ -76,18 +59,10 @@ export default function ClustersAdminPage() {
   const orgs = [...new Set(environments.map((e) => e.customer))].sort()
   const orgEnvs = environments.filter((e) => e.customer === selectedOrg)
   const orgClusters = clusters.filter((c) => c.customer === selectedOrg)
-  const orgEnvsByName = orgEnvs.reduce<Record<string, EnvironmentOption[]>>((acc, e) => {
-    if (!acc[e.customer]) acc[e.customer] = []
-    acc[e.customer].push(e)
-    return acc
-  }, {})
 
-  // Reset panel state when org changes
   const handleOrgChange = (org: string) => {
     setSelectedOrg(org)
-    setActivePanelEnvId(null)
     setShowClusterForm(false)
-    setShowPanelForm(false)
   }
 
   // --- cluster form handlers ---
@@ -184,83 +159,6 @@ export default function ClustersAdminPage() {
     }
   }
 
-  // --- panel management handlers ---
-  const openPanelManager = (envId: number) => {
-    if (activePanelEnvId === envId) {
-      setActivePanelEnvId(null)
-      return
-    }
-    setActivePanelEnvId(envId)
-    setShowPanelForm(false)
-    setPanelFormError('')
-    setPanelsLoading(true)
-    getPanels(envId)
-      .then(setPanels)
-      .finally(() => setPanelsLoading(false))
-  }
-
-  const openAddPanel = () => {
-    setEditingPanelId(null)
-    setPanelForm({ name: '', expr: '', unit: '', position: panels.length })
-    setPanelFormError('')
-    setShowPanelForm(true)
-  }
-
-  const openEditPanel = (p: Panel) => {
-    setEditingPanelId(p.id)
-    setPanelForm({ name: p.name, expr: p.expr, unit: p.unit, position: p.position })
-    setPanelFormError('')
-    setShowPanelForm(true)
-  }
-
-  const closePanelForm = () => {
-    setShowPanelForm(false)
-    setEditingPanelId(null)
-    setPanelFormError('')
-    setQueryResult(null)
-  }
-
-  const handleRunQuery = async () => {
-    if (!activePanelEnvId || !panelForm.expr.trim()) return
-    setQueryRunning(true)
-    setQueryResult(null)
-    try {
-      const result = await testPanelQuery(activePanelEnvId, panelForm.expr)
-      setQueryResult({ value: result.value })
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Query failed'
-      setQueryResult({ error: msg })
-    } finally {
-      setQueryRunning(false)
-    }
-  }
-
-  const handlePanelSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (activePanelEnvId === null) return
-    setPanelSaving(true)
-    setPanelFormError('')
-    try {
-      if (editingPanelId !== null) {
-        await updatePanel(editingPanelId, panelForm)
-      } else {
-        await createPanel(activePanelEnvId, panelForm)
-      }
-      closePanelForm()
-      getPanels(activePanelEnvId).then(setPanels)
-    } catch {
-      setPanelFormError('Failed to save panel.')
-    } finally {
-      setPanelSaving(false)
-    }
-  }
-
-  const handleDeletePanel = async (id: number) => {
-    if (!window.confirm('Delete this panel?')) return
-    await deletePanel(id)
-    if (activePanelEnvId !== null) getPanels(activePanelEnvId).then(setPanels)
-  }
-
   if (loading) {
     return (
       <div className="p-6 space-y-3">
@@ -353,157 +251,6 @@ export default function ClustersAdminPage() {
         <p className="text-xs text-ops-muted italic">Select an organization above to view and manage its clusters and panels.</p>
       ) : (
         <div className="space-y-6">
-
-          {/* Environments & Panels */}
-          <div>
-            <h2 className="text-sm font-semibold text-white mb-3">Environments &amp; Panels</h2>
-            <div className="space-y-2">
-              {orgEnvs.length === 0 ? (
-                <p className="text-xs text-ops-muted italic">No environments in this organization.</p>
-              ) : (
-                Object.values(orgEnvsByName).flat().map((env) => (
-                  <div key={env.id} className="border border-ops-border rounded overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2 bg-ops-surface">
-                      <span className="text-xs text-white italic">{env.name}</span>
-                      <button
-                        onClick={() => openPanelManager(env.id)}
-                        className={`text-xs px-2 py-1 rounded transition-colors ${
-                          activePanelEnvId === env.id
-                            ? 'text-ops-accent border border-ops-accent'
-                            : 'text-ops-muted hover:text-white border border-ops-border'
-                        }`}
-                      >
-                        {activePanelEnvId === env.id ? 'Close Panels' : 'Manage Panels'}
-                      </button>
-                    </div>
-
-                    {activePanelEnvId === env.id && (
-                      <div className="bg-ops-bg px-4 py-3 space-y-3">
-                        {panelsLoading ? (
-                          <div className="space-y-2">
-                            {[1, 2].map((i) => <div key={i} className="h-6 bg-ops-border rounded animate-pulse" />)}
-                          </div>
-                        ) : (
-                          <>
-                            {panels.length === 0 ? (
-                              <p className="text-xs text-ops-muted italic">
-                                No panels configured — using built-in defaults (CPU, Memory, Pod Count, Request Rate, Error Rate).
-                              </p>
-                            ) : (
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-ops-muted">
-                                    <th className="text-left py-1 pr-3 font-semibold">Name</th>
-                                    <th className="text-left py-1 pr-3 font-semibold">Expression</th>
-                                    <th className="text-left py-1 pr-3 font-semibold">Unit</th>
-                                    <th className="text-left py-1 pr-3 font-semibold">Pos</th>
-                                    <th />
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-ops-border">
-                                  {panels.map((p) => (
-                                    <tr key={p.id}>
-                                      <td className="py-1.5 pr-3 text-white">{p.name}</td>
-                                      <td className="py-1.5 pr-3 font-mono text-ops-muted max-w-xs truncate" title={p.expr}>{p.expr}</td>
-                                      <td className="py-1.5 pr-3 text-ops-muted">{p.unit || '—'}</td>
-                                      <td className="py-1.5 pr-3 text-ops-muted">{p.position}</td>
-                                      <td className="py-1.5 text-right space-x-2 whitespace-nowrap">
-                                        <button onClick={() => openEditPanel(p)} className="text-ops-muted hover:text-white transition-colors">Edit</button>
-                                        <button onClick={() => handleDeletePanel(p.id)} className="text-ops-danger hover:text-red-400 transition-colors">Delete</button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            )}
-
-                            {showPanelForm ? (
-                              <form onSubmit={handlePanelSubmit} className="border border-ops-border rounded p-3 space-y-2 bg-ops-surface">
-                                <div className="text-xs font-semibold text-white">{editingPanelId !== null ? 'Edit Panel' : 'New Panel'}</div>
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div>
-                                    <label className="block text-xs text-ops-muted mb-1">Name *</label>
-                                    <input
-                                      type="text"
-                                      required
-                                      value={panelForm.name}
-                                      onChange={(e) => setPanelForm((p) => ({ ...p, name: e.target.value }))}
-                                      placeholder="CPU Usage"
-                                      className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs text-ops-muted mb-1">Unit</label>
-                                    <input
-                                      type="text"
-                                      value={panelForm.unit}
-                                      onChange={(e) => setPanelForm((p) => ({ ...p, unit: e.target.value }))}
-                                      placeholder="%"
-                                      className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs text-ops-muted mb-1">Position</label>
-                                    <input
-                                      type="number"
-                                      value={panelForm.position}
-                                      onChange={(e) => setPanelForm((p) => ({ ...p, position: Number(e.target.value) }))}
-                                      className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-ops-accent"
-                                    />
-                                  </div>
-                                </div>
-                                <div>
-                                  <label className="block text-xs text-ops-muted mb-1">PromQL Expression *</label>
-                                  <textarea
-                                    required
-                                    rows={3}
-                                    value={panelForm.expr}
-                                    onChange={(e) => { setPanelForm((p) => ({ ...p, expr: e.target.value })); setQueryResult(null) }}
-                                    placeholder={`avg(rate(node_cpu_seconds_total{mode!="idle",namespace=~"$namespace"}[5m])) * 100`}
-                                    className="w-full bg-ops-bg border border-ops-border rounded px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-ops-accent resize-y"
-                                  />
-                                  <div className="flex items-center gap-3 mt-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={handleRunQuery}
-                                      disabled={queryRunning || !panelForm.expr.trim()}
-                                      className="text-xs text-ops-accent border border-ops-accent px-2 py-0.5 rounded hover:bg-ops-accent/10 transition-colors disabled:opacity-40"
-                                    >
-                                      {queryRunning ? 'Running…' : '▶ Run Query'}
-                                    </button>
-                                    {queryResult && (
-                                      queryResult.error
-                                        ? <span className="text-xs text-ops-danger font-mono">{queryResult.error}</span>
-                                        : <span className="text-xs text-ops-success font-mono">→ {queryResult.value?.toFixed(4)}</span>
-                                    )}
-                                  </div>
-                                </div>
-                                {panelFormError && <p className="text-ops-danger text-xs">{panelFormError}</p>}
-                                <div className="flex gap-2">
-                                  <button
-                                    type="submit"
-                                    disabled={panelSaving}
-                                    className="text-xs bg-ops-accent text-black font-semibold px-3 py-1 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
-                                  >
-                                    {panelSaving ? 'Saving...' : editingPanelId !== null ? 'Save' : 'Add Panel'}
-                                  </button>
-                                  <button type="button" onClick={closePanelForm} className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1 transition-colors">Cancel</button>
-                                </div>
-                              </form>
-                            ) : (
-                              <button onClick={openAddPanel} className="text-xs text-ops-accent hover:text-ops-accent/80 transition-colors">
-                                + Add Panel
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
 
           {/* Clusters */}
           <div>

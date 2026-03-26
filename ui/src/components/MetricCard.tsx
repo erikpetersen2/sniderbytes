@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { updatePanelForCluster, testQueryForCluster } from '../api/client'
+import { updatePanelForCluster, deletePanelForCluster, testQueryForCluster } from '../api/client'
 
 interface MetricCardProps {
   panelId?: number
@@ -11,6 +11,7 @@ interface MetricCardProps {
   isMock?: boolean
   namespace?: string
   onSaved?: (panelId: number, name: string, expr: string, unit: string) => void
+  onDeleted?: (panelId: number) => void
 }
 
 function getColorClass(name: string, value: number): string {
@@ -23,7 +24,7 @@ function getColorClass(name: string, value: number): string {
   return 'text-ops-accent'
 }
 
-export default function MetricCard({ panelId, clusterId, name, value, unit, expr: initialExpr, isMock, namespace, onSaved }: MetricCardProps) {
+export default function MetricCard({ panelId, clusterId, name, value, unit, expr: initialExpr, isMock, namespace, onSaved, onDeleted }: MetricCardProps) {
   const colorClass = getColorClass(name, value)
   const displayValue = Number.isInteger(value) ? value : value.toFixed(2)
 
@@ -33,6 +34,7 @@ export default function MetricCard({ panelId, clusterId, name, value, unit, expr
   const [editUnit, setEditUnit] = useState(unit)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const [queryRunning, setQueryRunning] = useState(false)
   const [queryResult, setQueryResult] = useState<{ value?: number; error?: string } | null>(null)
 
@@ -43,6 +45,20 @@ export default function MetricCard({ panelId, clusterId, name, value, unit, expr
     setSaveError('')
     setQueryResult(null)
     setEditing(true)
+  }
+
+  const handleDelete = async () => {
+    if (!panelId) return
+    if (!window.confirm(`Delete panel "${name}"?`)) return
+    setDeleting(true)
+    try {
+      await deletePanelForCluster(clusterId, panelId)
+      onDeleted?.(panelId)
+    } catch {
+      setSaveError('Failed to delete.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleSave = async () => {
@@ -123,20 +139,31 @@ export default function MetricCard({ panelId, clusterId, name, value, unit, expr
           </div>
         </div>
         {saveError && <p className="text-xs text-ops-danger">{saveError}</p>}
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={handleSave}
-            disabled={saving || !editExpr.trim()}
-            className="text-xs bg-ops-accent text-black font-semibold px-3 py-1 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            onClick={() => setEditing(false)}
-            className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1 transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving || !editExpr.trim()}
+              className="text-xs bg-ops-accent text-black font-semibold px-3 py-1 rounded hover:bg-ops-accent/80 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="text-xs text-ops-muted hover:text-gray-300 px-3 py-1 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+          {panelId && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-xs text-ops-danger hover:text-red-400 transition-colors disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
         </div>
       </div>
     )
